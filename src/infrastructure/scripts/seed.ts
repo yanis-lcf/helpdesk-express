@@ -11,13 +11,16 @@ import { rm, stat } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
   makeIdentityService,
+  makeKnowledgeService,
   makePortalService,
   makeTicketCommands,
   makeTicketQueries,
   type CommandResult,
 } from '../../application';
 import type { Category, Priority, Status, User } from '../../domain';
+import { DEMO_ARTICLES } from '../config/demoArticles';
 import { DEMO_EMPLOYEES, DEMO_PASSWORD, DEMO_STAFF } from '../config/demoUsers';
+import { createJsonArticleRepository } from '../knowledge/articleRepositories';
 import { createJsonlFileEventStore } from '../eventStore/jsonlFileEventStore';
 import { createScryptHasher } from '../security/passwordHasher';
 import { createJsonUserRepository } from '../users/userRepositories';
@@ -25,6 +28,7 @@ import { createJsonUserRepository } from '../users/userRepositories';
 const DATA_DIR = resolve(process.env.DATA_DIR ?? 'data');
 const FILE = resolve(process.env.EVENT_STORE_FILE ?? `${DATA_DIR}/events.jsonl`);
 const USERS_FILE = resolve(process.env.USERS_FILE ?? `${DATA_DIR}/users.json`);
+const ARTICLES_FILE = resolve(process.env.ARTICLES_FILE ?? `${DATA_DIR}/articles.json`);
 const force = process.argv.includes('--force');
 
 const nonEmpty = (path: string) => stat(path).then((s) => s.size > 0, () => false);
@@ -34,6 +38,7 @@ if (((await nonEmpty(FILE)) || (await nonEmpty(USERS_FILE))) && !force) {
 }
 await rm(FILE, { force: true });
 await rm(USERS_FILE, { force: true });
+await rm(ARTICLES_FILE, { force: true });
 
 // ---------- Comptes ----------
 
@@ -56,7 +61,15 @@ const portal = makePortalService({ commands, queries: makeTicketQueries({ eventS
 const HOUR = 3_600_000;
 const agents = DEMO_STAFF.map((m) => m.name);
 
-type Step = { status?: Status; comment?: string; internal?: boolean; priority?: Priority; byRequester?: boolean };
+type Step = {
+  status?: Status;
+  comment?: string;
+  internal?: boolean;
+  priority?: Priority;
+  byRequester?: boolean;
+  /** Avis laissé par le demandeur en confirmant la résolution. */
+  rating?: [number, string];
+};
 type Scenario = {
   title: string;
   description: string;
@@ -73,12 +86,12 @@ type Scenario = {
 };
 
 const scenarios: Scenario[] = [
-  { title: 'Imprimante du 2e étage hors service', description: 'Bourrage papier récurrent sur la HP LaserJet du plateau commercial.', priority: 'MEDIUM', category: 'HARDWARE', requester: 'Claire Dubois', tags: ['impression', 'plateau-2'], ageHours: 310, assignee: agents[2], steps: [[1, { status: 'IN_PROGRESS', comment: 'Je passe vérifier le bac 2 dans la matinée.' }], [5, { status: 'RESOLVED', comment: 'Galet d’entraînement remplacé. Merci de confirmer.' }], [30, { status: 'CLOSED', byRequester: true }]] },
-  { title: 'Accès VPN impossible depuis le domicile', description: 'Erreur « authentification échouée » sur FortiClient depuis ce matin.', priority: 'HIGH', category: 'NETWORK', requester: 'Marc Leroy', tags: ['vpn', 'télétravail'], ageHours: 290, assignee: agents[3], steps: [[0.5, { status: 'IN_PROGRESS', comment: 'Certificat expiré côté poste, renouvellement en cours.', internal: true }], [2, { status: 'RESOLVED', comment: 'Certificat renouvelé, la connexion fonctionne.' }], [3, { comment: 'Parfait, merci pour la rapidité !', byRequester: true }], [20, { status: 'CLOSED' }]] },
+  { title: 'Imprimante du 2e étage hors service', description: 'Bourrage papier récurrent sur la HP LaserJet du plateau commercial.', priority: 'MEDIUM', category: 'HARDWARE', requester: 'Claire Dubois', tags: ['impression', 'plateau-2'], ageHours: 310, assignee: agents[2], steps: [[1, { status: 'IN_PROGRESS', comment: 'Je passe vérifier le bac 2 dans la matinée.' }], [5, { status: 'RESOLVED', comment: 'Galet d’entraînement remplacé. Merci de confirmer.' }], [30, { status: 'CLOSED', byRequester: true, rating: [5, 'Intervention le jour même, merci Lucas !'] }]] },
+  { title: 'Accès VPN impossible depuis le domicile', description: 'Erreur « authentification échouée » sur FortiClient depuis ce matin.', priority: 'HIGH', category: 'NETWORK', requester: 'Marc Leroy', tags: ['vpn', 'télétravail'], ageHours: 290, assignee: agents[3], steps: [[0.5, { status: 'IN_PROGRESS', comment: 'Certificat expiré côté poste, renouvellement en cours.', internal: true }], [2, { status: 'RESOLVED', comment: 'Certificat renouvelé, la connexion fonctionne.' }], [3, { comment: 'Parfait, merci pour la rapidité !', byRequester: true }], [4, { status: 'CLOSED', byRequester: true, rating: [5, ''] }]] },
   { title: 'Création de compte pour une nouvelle arrivante', description: 'Arrivée de Julie Bernard (RH) lundi : compte AD, messagerie, accès SIRH.', priority: 'MEDIUM', category: 'ACCESS', requester: 'Service RH', tags: ['onboarding'], ageHours: 260, assignee: agents[4], steps: [[6, { status: 'IN_PROGRESS' }], [20, { status: 'RESOLVED', comment: 'Comptes créés, identifiants remis en main propre.' }]] },
-  { title: 'Outlook se ferme au démarrage', description: 'Plantage systématique après la mise à jour de mardi.', priority: 'MEDIUM', category: 'SOFTWARE', requester: 'Nadia Haddad', tags: ['outlook', 'office365'], ageHours: 230, assignee: agents[1], steps: [[3, { status: 'IN_PROGRESS', comment: 'Lancement en mode sans échec : un complément PDF est en cause.', internal: true }], [30, { status: 'RESOLVED', comment: 'Complément désactivé et mis à jour.' }]] },
-  { title: 'Wi-Fi instable en salle de réunion B', description: 'Déconnexions toutes les 10 minutes pendant les visios.', priority: 'HIGH', category: 'NETWORK', requester: 'Paul Girard', tags: ['wifi', 'salle-b'], ageHours: 200, assignee: agents[3], steps: [[1, { status: 'IN_PROGRESS' }], [6, { status: 'RESOLVED', comment: 'Borne remplacée et canal reconfiguré.' }], [40, { status: 'CLOSED', byRequester: true }]] },
-  { title: 'Demande d’un second écran', description: 'Pour le poste de comptabilité n°4.', priority: 'LOW', category: 'HARDWARE', requester: 'Émilie Robert', tags: ['matériel', 'compta'], ageHours: 180, assignee: agents[2], steps: [[24, { status: 'IN_PROGRESS', comment: 'Commande passée chez le fournisseur.' }], [60, { status: 'RESOLVED', comment: 'Écran installé.' }]] },
+  { title: 'Outlook se ferme au démarrage', description: 'Plantage systématique après la mise à jour de mardi.', priority: 'MEDIUM', category: 'SOFTWARE', requester: 'Nadia Haddad', tags: ['outlook', 'office365'], ageHours: 230, assignee: agents[1], steps: [[3, { status: 'IN_PROGRESS', comment: 'Lancement en mode sans échec : un complément PDF est en cause.', internal: true }], [30, { status: 'RESOLVED', comment: 'Complément désactivé et mis à jour.' }], [48, { status: 'CLOSED', byRequester: true, rating: [3, 'Résolu, mais plus d’une journée sans Outlook, c’est long.'] }]] },
+  { title: 'Wi-Fi instable en salle de réunion B', description: 'Déconnexions toutes les 10 minutes pendant les visios.', priority: 'HIGH', category: 'NETWORK', requester: 'Paul Girard', tags: ['wifi', 'salle-b'], ageHours: 200, assignee: agents[3], steps: [[1, { status: 'IN_PROGRESS' }], [6, { status: 'RESOLVED', comment: 'Borne remplacée et canal reconfiguré.' }], [40, { status: 'CLOSED', byRequester: true, rating: [4, 'Beaucoup mieux, quelques micro-coupures en fin de journée.'] }]] },
+  { title: 'Demande d’un second écran', description: 'Pour le poste de comptabilité n°4.', priority: 'LOW', category: 'HARDWARE', requester: 'Émilie Robert', tags: ['matériel', 'compta'], ageHours: 180, assignee: agents[2], steps: [[24, { status: 'IN_PROGRESS', comment: 'Commande passée chez le fournisseur.' }], [60, { status: 'RESOLVED', comment: 'Écran installé.' }], [66, { status: 'CLOSED', byRequester: true, rating: [5, ''] }]] },
   { title: 'Mot de passe expiré – compte bloqué', description: 'Compte verrouillé après 5 tentatives.', priority: 'HIGH', category: 'ACCESS', requester: 'Hugo Lambert', tags: ['mot-de-passe'], ageHours: 160, assignee: agents[2], steps: [[0.3, { status: 'RESOLVED', comment: 'Compte déverrouillé, mot de passe réinitialisé.' }], [10, { status: 'CLOSED' }]] },
   { title: 'Licence Adobe Acrobat expirée', description: 'Impossible de signer les contrats fournisseurs.', priority: 'MEDIUM', category: 'SOFTWARE', requester: 'Service Achats', tags: ['licence', 'adobe'], ageHours: 140, assignee: agents[0], steps: [[4, { status: 'IN_PROGRESS', comment: 'Bon de commande en validation.', internal: true }], [50, { status: 'RESOLVED' }]] },
   { title: 'Lenteurs sur l’ERP en fin de mois', description: 'Temps de réponse > 10 s sur les écrans de facturation.', priority: 'HIGH', category: 'SOFTWARE', requester: 'Direction financière', tags: ['erp', 'performance'], ageHours: 120, assignee: agents[4], steps: [[2, { status: 'IN_PROGRESS', comment: 'Analyse des index de la base en cours.', internal: true }], [9, { status: 'RESOLVED', comment: 'Index reconstruits, temps de réponse < 2 s.' }]] },
@@ -137,7 +150,10 @@ for (const [index, s] of scenarios.entries()) {
         const ticketId = ids.get(s)!;
         if (step.byRequester && employee) {
           if (step.comment) must(await portal.reply(ticketId, step.comment, employee), 'reply');
-          if (step.status === 'CLOSED') must(await portal.confirmResolution(ticketId, employee), 'confirm');
+          if (step.status === 'CLOSED') {
+            const feedback = step.rating ? { rating: step.rating[0], comment: step.rating[1] } : undefined;
+            must(await portal.confirmResolution(ticketId, employee, feedback), 'confirm');
+          }
           return;
         }
         if (step.comment) must(await commands.commentTicket({ ticketId, body: step.comment, internal: step.internal ?? false }, by), 'comment');
@@ -154,6 +170,17 @@ for (const action of actions.sort((a, b) => a.at - b.at)) {
   await action.run();
 }
 
+// ---------- Base de connaissances ----------
+
+const articles = await createJsonArticleRepository(ARTICLES_FILE);
+const knowledge = makeKnowledgeService({ articles, clock: () => new Date(now - 20 * 24 * HOUR).toISOString(), newId: randomUUID });
+for (const { author, views, deflections, ...input } of DEMO_ARTICLES) {
+  const created = await knowledge.create(input, author);
+  if (!created.ok) throw new Error(`[seed] article ${input.title} : ${JSON.stringify(created.error)}`);
+  await articles.update(created.value.id, (a) => ({ ...a, views, deflections }));
+}
+
 const report = await eventStore.verifyIntegrity();
 console.log(`[seed] ${accounts.size} comptes (mot de passe de démonstration : ${DEMO_PASSWORD}) → ${USERS_FILE}`);
 console.log(`[seed] ${scenarios.length} tickets, ${report.checkedEvents} événements écrits dans ${FILE}`);
+console.log(`[seed] ${DEMO_ARTICLES.length} articles de base de connaissances → ${ARTICLES_FILE}`);

@@ -1,4 +1,4 @@
-import { Columns3, ExternalLink, LayoutDashboard, LogOut, Moon, Plus, Search, ShieldCheck, Sun, Ticket, Users, Zap } from 'lucide-react';
+import { BookOpen, Columns3, ExternalLink, LayoutDashboard, LogOut, Moon, Plus, Search, ShieldCheck, Sun, Ticket, Users, Zap } from 'lucide-react';
 import { createContext, useCallback, useContext, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -83,6 +83,9 @@ export const Layout = () => {
           <NavLink to="/board" className="nav-link">
             <Columns3 size={17} /> <span className="label">Kanban</span>
             {mine > 0 && <span className="count" title="Mes tickets en file">{mine}</span>}
+          </NavLink>
+          <NavLink to="/knowledge" className="nav-link">
+            <BookOpen size={17} /> <span className="label">Base de connaissances</span>
           </NavLink>
           <div className="nav-section">Conformité</div>
           <NavLink to="/events" className="nav-link">

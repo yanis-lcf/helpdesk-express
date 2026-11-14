@@ -3,6 +3,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { CATEGORIES, isCategory, LIMITS, PRIORITIES, SLA_TARGET_HOURS, type Category, type Priority } from '../../../domain';
 import { PriorityBadge } from '../../components/Badges';
+import { KbSuggestions } from '../../components/Knowledge';
 import { api } from '../../lib/api';
 import { CATEGORY_LABELS, IMPACT_LABELS } from '../../lib/format';
 import { useCommand } from '../../lib/hooks';
@@ -13,7 +14,7 @@ export const PortalNewTicketPage = () => {
   const navigate = useNavigate();
   const initial = params.get('category');
   const [category, setCategory] = useState<Category>(isCategory(initial) ? initial : 'OTHER');
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(params.get('title') ?? '');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<Priority>('MEDIUM');
 
@@ -73,6 +74,8 @@ export const PortalNewTicketPage = () => {
             placeholder="Ex. : Je n’arrive plus à me connecter au VPN"
           />
         </label>
+
+        <KbSuggestions text={title} category={category} onResolved={() => navigate('/portal')} />
 
         <label className="field">
           <span>

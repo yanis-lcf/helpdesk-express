@@ -7,6 +7,10 @@ import { errorCode } from './lib/api';
 import { AuthProvider, ME_KEY } from './lib/auth';
 import { SessionProvider } from './lib/session';
 import { ToastProvider } from './lib/toast';
+// Polices auto-hébergées : aucune requête vers un service tiers (RGPD, fonctionne hors ligne).
+import '@fontsource-variable/inter/index.css';
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/500.css';
 import './styles.css';
 
 const queryClient: QueryClient = new QueryClient({

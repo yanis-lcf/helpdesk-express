@@ -8,7 +8,10 @@ import { UsersPage } from './pages/admin/UsersPage';
 import { AuditPage } from './pages/AuditPage';
 import { BoardPage } from './pages/BoardPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { KnowledgePage } from './pages/KnowledgePage';
 import { LoginPage } from './pages/LoginPage';
+import { PortalArticlePage } from './pages/portal/PortalArticlePage';
+import { PortalHelpPage } from './pages/portal/PortalHelpPage';
 import { PortalHomePage } from './pages/portal/PortalHomePage';
 import { PortalNewTicketPage } from './pages/portal/PortalNewTicketPage';
 import { PortalTicketPage } from './pages/portal/PortalTicketPage';
@@ -55,6 +58,8 @@ export const App = () => (
       <Route path="/portal" element={<PortalLayout />}>
         <Route index element={<PortalHomePage />} />
         <Route path="new" element={<PortalNewTicketPage />} />
+        <Route path="help" element={<PortalHelpPage />} />
+        <Route path="help/:articleId" element={<PortalArticlePage />} />
         <Route path=":ticketId" element={<PortalTicketPage />} />
       </Route>
       <Route
@@ -69,6 +74,7 @@ export const App = () => (
         <Route path="/tickets/:ticketId" element={<TicketDetailPage />} />
         <Route path="/board" element={<BoardPage />} />
         <Route path="/events" element={<AuditPage />} />
+        <Route path="/knowledge" element={<KnowledgePage />} />
         <Route
           path="/admin/users"
           element={

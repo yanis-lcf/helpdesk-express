@@ -23,6 +23,7 @@ export const EVENT_LABELS: Record<TicketEventType, string> = {
   TicketAssigned: 'Assignation',
   TicketCommented: 'Commentaire',
   TicketDeleted: 'Suppression',
+  TicketRated: 'Évaluation',
 };
 
 export const SLA_LABELS: Record<SlaStatus, string> = {

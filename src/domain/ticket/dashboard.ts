@@ -33,6 +33,53 @@ export type DashboardStats = {
   readonly trend: readonly TrendPoint[];
   /** Tickets de la file les plus proches de leur échéance. */
   readonly attention: readonly TicketView[];
+  /** Satisfaction des demandeurs (CSAT). */
+  readonly satisfaction: SatisfactionStats;
+};
+
+export type SatisfactionStats = {
+  /** Nombre d'évaluations reçues. */
+  readonly responses: number;
+  /** Note moyenne sur 5 (null sans évaluation). */
+  readonly average: number | null;
+  /** CSAT : part des notes 4 ou 5 (0..1), null sans évaluation. */
+  readonly csat: number | null;
+  readonly distribution: Readonly<Record<1 | 2 | 3 | 4 | 5, number>>;
+  /** Derniers avis commentés, du plus récent au plus ancien. */
+  readonly recent: readonly {
+    readonly ticketId: string;
+    readonly reference: string;
+    readonly title: string;
+    readonly rating: number;
+    readonly comment: string;
+    readonly ratedBy: string;
+    readonly ratedAt: Timestamp;
+  }[];
+};
+
+/** Indicateurs de satisfaction calculés à partir des tickets évalués. */
+export const computeSatisfaction = (tickets: readonly TicketView[]): SatisfactionStats => {
+  const rated = tickets.filter((t) => t.satisfaction !== null);
+  const ratings = rated.map((t) => t.satisfaction!.rating);
+  return {
+    responses: rated.length,
+    average: ratings.length ? ratings.reduce((s, r) => s + r, 0) / ratings.length : null,
+    csat: ratings.length ? ratings.filter((r) => r >= 4).length / ratings.length : null,
+    distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, ...Object.fromEntries([1, 2, 3, 4, 5].map((n) => [n, ratings.filter((r) => r === n).length])) },
+    recent: rated
+      .filter((t) => t.satisfaction!.comment.length > 0)
+      .sort((a, b) => b.satisfaction!.ratedAt.localeCompare(a.satisfaction!.ratedAt))
+      .slice(0, 5)
+      .map((t) => ({
+        ticketId: t.id,
+        reference: t.reference,
+        title: t.title,
+        rating: t.satisfaction!.rating,
+        comment: t.satisfaction!.comment,
+        ratedBy: t.satisfaction!.ratedBy,
+        ratedAt: t.satisfaction!.ratedAt,
+      })),
+  };
 };
 
 const DAY = 86_400_000;
@@ -86,5 +133,6 @@ export const computeDashboard = (events: readonly TicketEvent[], now: Timestamp,
       resolved: resolved.filter((t) => dayOf(t.resolvedAt as string) === date).length,
     })),
     attention: [...backlog].sort((a, b) => a.sla.remainingMs - b.sla.remainingMs).slice(0, 5),
+    satisfaction: computeSatisfaction(active),
   };
 };

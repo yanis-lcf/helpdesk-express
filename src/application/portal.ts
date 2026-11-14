@@ -83,10 +83,22 @@ export const makePortalService = ({ commands, queries }: { readonly commands: Ti
       return commands.commentTicket({ ticketId, body, internal: false }, user.name);
     },
 
-    /** Le demandeur valide la solution : le ticket est clôturé définitivement. */
-    confirmResolution: async (ticketId: TicketId, user: User): Promise<CommandResult> => {
+    /**
+     * Le demandeur valide la solution : le ticket est clôturé définitivement.
+     * Son avis facultatif (note 1-5 + commentaire) est enregistré juste avant la clôture,
+     * dans le même parcours : pas d'e-mail d'enquête séparé que personne n'ouvre.
+     */
+    confirmResolution: async (
+      ticketId: TicketId,
+      user: User,
+      feedback?: { readonly rating: number; readonly comment?: string },
+    ): Promise<CommandResult> => {
       const allowed = await guard(ticketId, user, 'CONFIRM_RESOLUTION');
       if (!allowed.ok) return allowed;
+      if (feedback) {
+        const rated = await commands.rateTicket({ ticketId, rating: feedback.rating, comment: feedback.comment ?? '' }, user.name);
+        if (!rated.ok) return rated;
+      }
       return commands.updateTicket({ ticketId, changes: { status: 'CLOSED' } }, user.name);
     },
 

@@ -16,6 +16,7 @@ describe('evolve / rehydrate', () => {
         status: 'OPEN',
         requester: 'Claire',
         requesterId: null,
+        satisfaction: null,
         assignee: null,
         tags: [],
         comments: [],

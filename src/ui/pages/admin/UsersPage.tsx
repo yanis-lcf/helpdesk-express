@@ -1,10 +1,12 @@
-import { KeyRound, Search, UserPlus, Users } from 'lucide-react';
+import { Download, FileDown, FileUp, KeyRound, Search, UserPlus, Users } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { ROLES, type Role } from '../../../domain';
 import { Avatar } from '../../components/Badges';
 import { EmptyState, LoadingRows } from '../../components/EmptyState';
 import { Modal } from '../../components/Modal';
-import { api, type UserDto } from '../../lib/api';
+import { api, errorMessage, type ImportReportDto, type UserDto } from '../../lib/api';
+import { downloadFile, downloadJson, parseUsersCsv } from '../../lib/download';
+import { useToast } from '../../lib/toast';
 import { useAuth } from '../../lib/auth';
 import { ROLE_LABELS } from '../../lib/format';
 import { useCommand, useUsers } from '../../lib/hooks';
@@ -102,6 +104,105 @@ const ResetPassword = ({ user, onDone }: { user: UserDto; onDone: () => void }) 
   );
 };
 
+const CSV_TEMPLATE = 'nom;email;profil;service;fonction\nJulie Bernard;julie.bernard@entreprise.fr;Employé;RH;Chargée de recrutement\n';
+
+/** Import en masse depuis l'export de l'annuaire RH (CSV Excel). */
+const ImportUsers = ({ onDone }: { onDone: () => void }) => {
+  const [parsed, setParsed] = useState<ReturnType<typeof parseUsersCsv> | null>(null);
+  const [report, setReport] = useState<ImportReportDto | null>(null);
+  const run = useCommand((rows: ReturnType<typeof parseUsersCsv>['rows']) => api.admin.importUsers.mutate({ rows: [...rows] }), (r) => `${r.created.length} compte(s) créé(s)`);
+
+  const credentials = () =>
+    downloadFile(
+      'identifiants-provisoires.csv',
+      '\uFEFFnom;email;mot de passe provisoire\n' + (report?.created ?? []).map((u) => `${u.name};${u.email};${u.temporaryPassword}`).join('\n'),
+      'text/csv;charset=utf-8',
+    );
+
+  return (
+    <Modal
+      title="Importer des comptes (CSV)"
+      onClose={onDone}
+      footer={
+        report ? (
+          <>
+            {report.created.length > 0 && (
+              <button className="btn" onClick={credentials}>
+                <FileDown size={15} /> Identifiants provisoires
+              </button>
+            )}
+            <button className="btn btn-primary" onClick={onDone}>
+              Terminer
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="btn" onClick={onDone}>
+              Annuler
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={!parsed?.rows.length || run.isPending}
+              onClick={() => parsed && run.mutate(parsed.rows, { onSuccess: setReport })}
+            >
+              Importer {parsed?.rows.length ? `${parsed.rows.length} compte(s)` : ''}
+            </button>
+          </>
+        )
+      }
+    >
+      {report ? (
+        <div className="import-report">
+          <p>
+            <b>{report.created.length}</b> compte(s) créé(s), <b>{report.rejected.length}</b> ligne(s) ignorée(s).
+          </p>
+          {report.created.length > 0 && (
+            <p className="muted small">Téléchargez les identifiants provisoires maintenant : ils ne seront plus affichés.</p>
+          )}
+          {report.rejected.length > 0 && (
+            <ul className="small">
+              {report.rejected.map((r) => (
+                <li key={r.line}>
+                  Ligne {r.line} ({r.email || 'sans e-mail'}) : {r.reason}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : (
+        <>
+          <p className="muted small" style={{ marginTop: 0 }}>
+            Colonnes : <code>nom;email;profil;service;fonction</code> — profil : Employé, Agent ou Administrateur (Employé par défaut).{' '}
+            <button type="button" className="link-button" onClick={() => downloadFile('modele-import-comptes.csv', '\uFEFF' + CSV_TEMPLATE, 'text/csv;charset=utf-8')}>
+              Télécharger le modèle
+            </button>
+          </p>
+          <label className="field">
+            <span>Fichier CSV</span>
+            <input
+              className="input"
+              type="file"
+              accept=".csv,text/csv"
+              aria-label="Fichier CSV"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                setParsed(file ? parseUsersCsv(await file.text()) : null);
+              }}
+            />
+          </label>
+          {parsed?.error && <div className="banner banner-danger" role="alert">{parsed.error}</div>}
+          {parsed && !parsed.error && (
+            <p className="small">
+              {parsed.rows.length} ligne(s) détectée(s) : {parsed.rows.slice(0, 3).map((r) => r.name).join(', ')}
+              {parsed.rows.length > 3 ? '…' : ''}
+            </p>
+          )}
+        </>
+      )}
+    </Modal>
+  );
+};
+
 export const UsersPage = () => {
   const { user: me } = useAuth();
   const { data: users, isPending } = useUsers();
@@ -109,6 +210,28 @@ export const UsersPage = () => {
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState(false);
   const [resetting, setResetting] = useState<UserDto | null>(null);
+  const [importing, setImporting] = useState(false);
+  const toast = useToast();
+
+  /** Réversibilité : toutes les données de l'instance, dans un format ouvert et vérifiable. */
+  const exportAll = async () => {
+    try {
+      const data = await api.admin.exportAll.query();
+      downloadJson(`helpdesk-export-${data.exportedAt.slice(0, 10)}.json`, data);
+      toast.success(`Export complet : ${data.counts.events} événements, ${data.counts.users} comptes, ${data.counts.articles} articles`);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  };
+  /** RGPD : données d'une personne (droit d'accès / portabilité). */
+  const exportPerson = async (u: UserDto) => {
+    try {
+      downloadJson(`donnees-${u.email}.json`, await api.admin.exportPerson.query({ userId: u.id }));
+      toast.success(`Données de ${u.name} exportées`);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  };
 
   const update = useCommand(
     (input: { userId: string; role?: Role; active?: boolean }) => api.admin.updateUser.mutate(input),
@@ -133,9 +256,17 @@ export const UsersPage = () => {
           <h1>Utilisateurs</h1>
           <p>Comptes des collaborateurs (portail) et de l’équipe DSI (back-office).</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setCreating(true)}>
-          <UserPlus size={16} /> Nouveau compte
-        </button>
+        <div className="head-actions">
+          <button className="btn" onClick={exportAll} title="Toutes les données (tickets, journal scellé, comptes, articles) au format JSON">
+            <Download size={16} /> Export complet
+          </button>
+          <button className="btn" onClick={() => setImporting(true)}>
+            <FileUp size={16} /> Importer (CSV)
+          </button>
+          <button className="btn btn-primary" onClick={() => setCreating(true)}>
+            <UserPlus size={16} /> Nouveau compte
+          </button>
+        </div>
       </header>
 
       <section className="card">
@@ -216,9 +347,12 @@ export const UsersPage = () => {
                           <span>{u.active ? 'Actif' : 'Désactivé'}</span>
                         </label>
                       </td>
-                      <td style={{ textAlign: 'right' }}>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                         <button className="btn btn-sm" onClick={() => setResetting(u)}>
                           <KeyRound size={14} /> Mot de passe
+                        </button>{' '}
+                        <button className="btn btn-sm btn-icon" aria-label={`Exporter les données de ${u.name} (RGPD)`} title="Exporter ses données (RGPD)" onClick={() => exportPerson(u)}>
+                          <FileDown size={14} />
                         </button>
                       </td>
                     </tr>
@@ -236,6 +370,7 @@ export const UsersPage = () => {
         </Modal>
       )}
       {resetting && <ResetPassword user={resetting} onDone={() => setResetting(null)} />}
+      {importing && <ImportUsers onDone={() => setImporting(false)} />}
     </>
   );
 };

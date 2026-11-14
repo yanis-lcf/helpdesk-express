@@ -71,8 +71,10 @@ export type TicketCommented = DomainEvent<
   { readonly commentId: CommentId; readonly body: string; readonly internal: boolean }
 >;
 export type TicketDeleted = DomainEvent<'TicketDeleted', Record<string, never>>;
+/** Avis du demandeur sur la résolution (enquête de satisfaction intégrée, note de 1 à 5). */
+export type TicketRated = DomainEvent<'TicketRated', { readonly rating: number; readonly comment: string }>;
 
-export type TicketEvent = TicketCreated | TicketUpdated | TicketAssigned | TicketCommented | TicketDeleted;
+export type TicketEvent = TicketCreated | TicketUpdated | TicketAssigned | TicketCommented | TicketDeleted | TicketRated;
 export type TicketEventType = TicketEvent['type'];
 export const EVENT_TYPES: readonly TicketEventType[] = [
   'TicketCreated',
@@ -80,9 +82,17 @@ export const EVENT_TYPES: readonly TicketEventType[] = [
   'TicketAssigned',
   'TicketCommented',
   'TicketDeleted',
+  'TicketRated',
 ];
 
 // ---------- État (reconstitué par rejeu) ----------
+
+export type Satisfaction = {
+  readonly rating: number;
+  readonly comment: string;
+  readonly ratedBy: Actor;
+  readonly ratedAt: Timestamp;
+};
 
 export type Comment = {
   readonly id: CommentId;
@@ -109,6 +119,8 @@ export type Ticket = {
   readonly updatedAt: Timestamp;
   /** Date de passage en RESOLVED/CLOSED ; remise à null en cas de réouverture. */
   readonly resolvedAt: Timestamp | null;
+  /** Dernier avis du demandeur (null tant qu'il n'a pas évalué la résolution). */
+  readonly satisfaction: Satisfaction | null;
   /** Nombre d'événements appliqués (version de l'agrégat). */
   readonly version: number;
 };
@@ -139,8 +151,9 @@ export type CommentTicket = CommandBase<'CommentTicket'> & {
   readonly internal: boolean;
 };
 export type DeleteTicket = CommandBase<'DeleteTicket'>;
+export type RateTicket = CommandBase<'RateTicket'> & { readonly rating: number; readonly comment: string };
 
-export type TicketCommand = CreateTicket | UpdateTicket | AssignTicket | CommentTicket | DeleteTicket;
+export type TicketCommand = CreateTicket | UpdateTicket | AssignTicket | CommentTicket | DeleteTicket | RateTicket;
 
 // ---------- Erreurs métier ----------
 

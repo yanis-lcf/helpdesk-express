@@ -7,3 +7,4 @@ export * from './ticket/projections';
 export * from './ticket/dashboard';
 export * from './identity/types';
 export * from './access/policy';
+export * from './knowledge/article';

@@ -1,4 +1,4 @@
-import { ArrowRight, BellRing, CheckCircle2, Cpu, HelpCircle, Inbox, KeyRound, Monitor, Plus, Wifi, type LucideIcon } from 'lucide-react';
+import { ArrowRight, BellRing, CheckCircle2, Cpu, HelpCircle, Inbox, KeyRound, Monitor, Plus, Search, Wifi, type LucideIcon } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { Category } from '../../../domain';
@@ -58,6 +58,18 @@ export const PortalHomePage = () => {
           <h1>Bonjour {firstName}, comment pouvons-nous vous aider ?</h1>
           <p>Décrivez votre problème : la DSI est prévenue immédiatement et vous suivez l’avancement ici.</p>
         </div>
+        <form
+          className="search-input kb-search"
+          role="search"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const q = new FormData(e.currentTarget).get('q');
+            navigate(`/portal/help${q ? `?q=${encodeURIComponent(String(q))}` : ''}`);
+          }}
+        >
+          <Search size={16} />
+          <input className="input" name="q" aria-label="Chercher une solution dans le centre d’aide" placeholder="Chercher une solution : imprimante, VPN, mot de passe…" />
+        </form>
         <div className="category-grid">
           {(Object.keys(CATEGORY_HELP) as Category[]).map((c) => {
             const { icon: Icon, hint } = CATEGORY_HELP[c];

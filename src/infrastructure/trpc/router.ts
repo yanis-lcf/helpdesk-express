@@ -1,6 +1,8 @@
+import { randomBytes, randomInt } from 'node:crypto';
 import { initTRPC, TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import {
+  ARTICLE_LIMITS,
   CATEGORIES,
   IDENTITY_LIMITS,
   isAdmin,
@@ -16,6 +18,9 @@ import type {
   ApplicationError,
   IdentityError,
   IdentityService,
+  KnowledgeError,
+  KnowledgeService,
+  PortabilityService,
   PortalService,
   TicketCommands,
   TicketQueries,
@@ -23,7 +28,7 @@ import type {
 import type { RateLimiter } from '../security/session';
 
 type TRPCErrorCode = ConstructorParameters<typeof TRPCError>[0]['code'];
-type AnyError = ApplicationError | IdentityError;
+type AnyError = ApplicationError | IdentityError | KnowledgeError;
 
 const ERROR_MAPPING: Record<AnyError['code'], { code: TRPCErrorCode; message: string }> = {
   VALIDATION: { code: 'BAD_REQUEST', message: 'Données invalides.' },
@@ -39,7 +44,12 @@ const ERROR_MAPPING: Record<AnyError['code'], { code: TRPCErrorCode; message: st
   EMAIL_TAKEN: { code: 'CONFLICT', message: 'Un compte existe déjà avec cette adresse e-mail.' },
   USER_NOT_FOUND: { code: 'NOT_FOUND', message: 'Compte introuvable.' },
   SELF_LOCKOUT: { code: 'BAD_REQUEST', message: 'Vous ne pouvez pas retirer vos propres droits d’administration.' },
+  ARTICLE_VALIDATION: { code: 'BAD_REQUEST', message: 'Article invalide.' },
+  ARTICLE_NOT_FOUND: { code: 'NOT_FOUND', message: 'Article introuvable.' },
 };
+
+/** Mot de passe provisoire lisible (lettres + chiffres), à transmettre puis changer par l'utilisateur. */
+const temporaryPassword = () => `Bienvenue-${randomInt(1000, 10_000)}-${randomBytes(3).toString('hex')}`;
 
 export class DomainTRPCError extends TRPCError {
   constructor(
@@ -109,17 +119,35 @@ const description = z.string().max(LIMITS.description + 50);
 const body = z.string().max(LIMITS.comment + 50);
 const password = z.string().max(IDENTITY_LIMITS.passwordMax);
 const email = z.string().max(IDENTITY_LIMITS.email + 20);
+const articleId = z.string().min(1).max(100);
+const searchText = z.string().max(500);
+const articleInput = z.object({
+  title: z.string().max(ARTICLE_LIMITS.title + 50),
+  body: z.string().max(ARTICLE_LIMITS.body + 50),
+  category,
+  keywords: z.array(z.string().max(ARTICLE_LIMITS.keyword + 20)).max(ARTICLE_LIMITS.keywords + 5).default([]),
+  published: z.boolean().default(true),
+});
+const userRow = z.object({
+  name: z.string().max(IDENTITY_LIMITS.name + 20),
+  email,
+  role: z.enum(ROLES).default('EMPLOYEE'),
+  department: z.string().max(IDENTITY_LIMITS.department + 20).default(''),
+  jobTitle: z.string().max(IDENTITY_LIMITS.jobTitle + 20).default(''),
+});
 
 export type RouterDeps = {
   readonly commands: TicketCommands;
   readonly queries: TicketQueries;
   readonly portal: PortalService;
   readonly identity: IdentityService;
+  readonly knowledge: KnowledgeService;
+  readonly portability: PortabilityService;
   readonly loginLimiter: RateLimiter;
 };
 
 /** Le routeur ne contient aucune règle métier : il authentifie, valide la forme et délègue aux use cases. */
-export const createAppRouter = ({ commands, queries, portal, identity, loginLimiter }: RouterDeps) =>
+export const createAppRouter = ({ commands, queries, portal, identity, knowledge, portability, loginLimiter }: RouterDeps) =>
   t.router({
     // ===== Authentification =====
     auth: t.router({
@@ -155,11 +183,36 @@ export const createAppRouter = ({ commands, queries, portal, identity, loginLimi
         .input(z.object({ ticketId, body }))
         .mutation(async ({ input, ctx }) => unwrap(await portal.reply(input.ticketId, input.body, ctx.user))),
       confirmResolution: authed
-        .input(z.object({ ticketId }))
-        .mutation(async ({ input, ctx }) => unwrap(await portal.confirmResolution(input.ticketId, ctx.user))),
+        .input(
+          z.object({
+            ticketId,
+            feedback: z.object({ rating: z.number().int(), comment: z.string().max(LIMITS.feedback + 50).default('') }).optional(),
+          }),
+        )
+        .mutation(async ({ input, ctx }) => unwrap(await portal.confirmResolution(input.ticketId, ctx.user, input.feedback))),
       reopen: authed
         .input(z.object({ ticketId, reason: body }))
         .mutation(async ({ input, ctx }) => unwrap(await portal.reopen(input.ticketId, input.reason, ctx.user))),
+    }),
+
+    // ===== Base de connaissances =====
+    kb: t.router({
+      // Portail : articles publiés uniquement.
+      search: authed
+        .input(z.object({ query: searchText.default(''), category: category.optional() }))
+        .query(({ input }) => knowledge.search(input.query, input.category)),
+      suggest: authed
+        .input(z.object({ text: searchText, category: category.optional() }))
+        .query(({ input }) => knowledge.suggest(input.text, input.category)),
+      read: authed.input(z.object({ id: articleId })).mutation(async ({ input }) => unwrap(await knowledge.read(input.id))),
+      helpful: authed.input(z.object({ id: articleId })).mutation(async ({ input }) => unwrap(await knowledge.markHelpful(input.id))),
+      // Back-office : rédaction et statistiques.
+      list: staff.query(() => knowledge.listAll()),
+      get: staff.input(z.object({ id: articleId })).query(async ({ input }) => unwrap(await knowledge.get(input.id))),
+      create: staff.input(articleInput).mutation(async ({ input, ctx }) => unwrap(await knowledge.create(input, ctx.user.name))),
+      update: staff
+        .input(articleInput.extend({ id: articleId }))
+        .mutation(async ({ input: { id, ...article } }) => unwrap(await knowledge.update(id, article))),
     }),
 
     // ===== Back-office DSI =====
@@ -213,7 +266,7 @@ export const createAppRouter = ({ commands, queries, portal, identity, loginLimi
     }),
 
     dashboard: t.router({
-      stats: staff.query(() => queries.getDashboard()),
+      stats: staff.query(async () => ({ ...(await queries.getDashboard()), knowledge: await knowledge.stats() })),
     }),
 
     events: t.router({
@@ -263,6 +316,15 @@ export const createAppRouter = ({ commands, queries, portal, identity, loginLimi
       resetPassword: admin
         .input(z.object({ userId: z.string().max(100), password }))
         .mutation(async ({ input }) => unwrap(await identity.resetPassword(input.userId, input.password))),
+      importUsers: admin
+        .input(z.object({ rows: z.array(userRow).min(1).max(1000) }))
+        .mutation(({ input }) => identity.importUsers(input.rows, temporaryPassword)),
+      /** Réversibilité : toutes les données, format ouvert, empreintes incluses (jamais les mots de passe). */
+      exportAll: admin.query(() => portability.exportAll()),
+      /** RGPD : données d'une personne (droit d'accès / portabilité). */
+      exportPerson: admin
+        .input(z.object({ userId: z.string().max(100) }))
+        .query(async ({ input }) => unwrap(await portability.exportPerson(input.userId))),
     }),
   });
 

@@ -8,11 +8,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Le client React appelle /trpc/... ; Vite relaie vers le serveur tRPC.
-      '/trpc': {
-        target: `http://localhost:${API_PORT}`,
-        rewrite: (path) => path.replace(/^\/trpc/, ''),
-      },
+      // Le client React appelle /trpc/... ; Vite relaie tel quel vers le serveur, qui expose l'API sous /trpc/
+      // (comme en production, où ce même serveur sert aussi l'interface compilée).
+      '/trpc': { target: `http://localhost:${API_PORT}` },
     },
   },
   test: {

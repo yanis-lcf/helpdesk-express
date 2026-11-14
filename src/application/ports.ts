@@ -1,4 +1,4 @@
-import type { Result, TicketEvent, TicketId, Timestamp, User, UserId } from '../domain';
+import type { Article, ArticleId, Result, TicketEvent, TicketId, Timestamp, User, UserId } from '../domain';
 
 /** Événement tel qu'enregistré dans l'Event Store (enveloppe technique + fait métier). */
 export type StoredEvent = {
@@ -67,4 +67,15 @@ export interface UserRepository {
 export interface PasswordHasher {
   hash(password: string): Promise<string>;
   verify(password: string, hash: string): Promise<boolean>;
+}
+
+// ---------- Base de connaissances ----------
+
+export interface ArticleRepository {
+  list(): Promise<readonly Article[]>;
+  findById(id: ArticleId): Promise<Article | null>;
+  /** Création ou remplacement (clé : id). */
+  save(article: Article): Promise<void>;
+  /** Modification atomique (lecture + écriture sans entrelacement) ; null si l'article n'existe pas. */
+  update(id: ArticleId, change: (article: Article) => Article): Promise<Article | null>;
 }

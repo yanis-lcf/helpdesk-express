@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { api, errorMessage } from './api';
+import type { Category } from '../../domain';
 import { useToast } from './toast';
 
 const LIVE = { refetchInterval: 5000 } as const;
@@ -89,3 +90,33 @@ export const usePortalTicket = (ticketId: string) =>
 export const useDirectory = () => useQuery({ queryKey: ['directory'], queryFn: () => api.meta.directory.query(), staleTime: 60_000 });
 
 export const useUsers = () => useQuery({ queryKey: ['admin', 'users'], queryFn: () => api.admin.users.query() });
+
+// ---------- Base de connaissances ----------
+
+/** Valeur stabilisée après `ms` sans changement (évite une requête à chaque frappe). */
+export const useDebounced = <T,>(value: T, ms = 300): T => {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(timer);
+  }, [value, ms]);
+  return debounced;
+};
+
+/** Solutions proposées pendant la saisie d'une demande. */
+export const useKbSuggestions = (text: string, category?: Category) => {
+  const query = useDebounced(text.trim());
+  return useQuery({
+    queryKey: ['kb', 'suggest', query, category],
+    queryFn: () => api.kb.suggest.query({ text: query, category }),
+    enabled: query.length >= 3,
+    staleTime: 30_000,
+  });
+};
+
+export const useKbSearch = (text: string, category?: Category) => {
+  const query = useDebounced(text.trim(), 200);
+  return useQuery({ queryKey: ['kb', 'search', query, category], queryFn: () => api.kb.search.query({ query, category }), staleTime: 30_000 });
+};
+
+export const useKbArticles = () => useQuery({ queryKey: ['kb', 'all'], queryFn: () => api.kb.list.query() });

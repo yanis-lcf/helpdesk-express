@@ -1,4 +1,12 @@
-import { makeIdentityService, makePortalService, makeTicketCommands, makeTicketQueries } from '../../src/application';
+import {
+  makeIdentityService,
+  makeKnowledgeService,
+  makePortabilityService,
+  makePortalService,
+  makeTicketCommands,
+  makeTicketQueries,
+} from '../../src/application';
+import { createInMemoryArticleRepository } from '../../src/infrastructure/knowledge/articleRepositories';
 import type { TicketChanges, TicketEvent, User } from '../../src/domain';
 import { createInMemoryEventStore } from '../../src/infrastructure/eventStore/inMemoryEventStore';
 import { createScryptHasher } from '../../src/infrastructure/security/passwordHasher';
@@ -66,13 +74,19 @@ export const setupApp = (eventStore = createInMemoryEventStore()) => {
   const commands = makeTicketCommands({ eventStore, clock, newId });
   const queries = makeTicketQueries({ eventStore, clock });
   const users = createInMemoryUserRepository();
+  const articles = createInMemoryArticleRepository();
+  const identity = makeIdentityService({ users, hasher: fastHasher, newId });
+  const knowledge = makeKnowledgeService({ articles, clock, newId });
   const app = {
     eventStore,
     commands,
     queries,
     users,
-    identity: makeIdentityService({ users, hasher: fastHasher, newId }),
+    articles,
+    identity,
+    knowledge,
     portal: makePortalService({ commands, queries }),
+    portability: makePortabilityService({ eventStore, identity, knowledge, clock }),
     /** Avance l'horloge de h heures. */
     advance: (hours: number) => {
       now += hours * 3_600_000;

@@ -60,6 +60,12 @@ export const makeIdentityService = ({
       return record?.active ? toPublicUser(record) : null;
     },
 
+    /** Compte (actif ou non) par identifiant. */
+    getUser: async (id: UserId): Promise<User | null> => {
+      const record = await users.findById(id);
+      return record ? toPublicUser(record) : null;
+    },
+
     findByName: async (name: string): Promise<User | null> => {
       const wanted = name.trim().toLowerCase();
       const found = (await users.list()).find((u) => u.name.toLowerCase() === wanted);
@@ -79,6 +85,38 @@ export const makeIdentityService = ({
       const record: UserRecord = { id: newId(), ...valid.value, active: true, passwordHash: await hasher.hash(password.value) };
       await users.save(record);
       return ok(toPublicUser(record));
+    },
+
+    /**
+     * Import en masse (CSV de l'annuaire RH) : chaque ligne valide crée un compte avec un mot de passe
+     * provisoire, renvoyé UNE seule fois à l'administrateur. Les lignes en erreur sont signalées sans bloquer les autres.
+     */
+    importUsers: async (
+      rows: readonly NewUserInput[],
+      makePassword: () => string,
+    ): Promise<{
+      readonly created: readonly (User & { readonly temporaryPassword: string })[];
+      readonly rejected: readonly { readonly line: number; readonly email: string; readonly reason: string }[];
+    }> => {
+      const created: (User & { temporaryPassword: string })[] = [];
+      const rejected: { line: number; email: string; reason: string }[] = [];
+      for (const [index, row] of rows.entries()) {
+        const line = index + 1;
+        const valid = validateNewUser(row);
+        if (!valid.ok) {
+          rejected.push({ line, email: row.email, reason: valid.error });
+          continue;
+        }
+        if (await users.findByEmail(valid.value.email)) {
+          rejected.push({ line, email: valid.value.email, reason: 'Un compte existe déjà avec cette adresse e-mail.' });
+          continue;
+        }
+        const temporaryPassword = makePassword();
+        const record: UserRecord = { id: newId(), ...valid.value, active: true, passwordHash: await hasher.hash(temporaryPassword) };
+        await users.save(record);
+        created.push({ ...toPublicUser(record), temporaryPassword });
+      }
+      return { created, rejected };
     },
 
     /** Un administrateur ne peut ni se retirer ses propres droits, ni désactiver son propre compte. */

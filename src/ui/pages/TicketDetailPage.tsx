@@ -7,6 +7,7 @@ import {
   Plus,
   Send,
   StickyNote,
+  Star,
   Trash2,
   TriangleAlert,
   UserCheck,
@@ -41,7 +42,9 @@ import {
   PRIORITY_LABELS,
   STATUS_LABELS,
 } from '../lib/format';
-import { useCommand, useTeam, useTicket } from '../lib/hooks';
+import { useCommand, useKbArticles, useTeam, useTicket } from '../lib/hooks';
+import { fillMacro, MACROS } from '../lib/macros';
+import { StarRating } from '../components/Rating';
 import { useSession } from '../lib/session';
 
 type Changes = { title?: string; description?: string; status?: Status; priority?: Priority; category?: Category; tags?: string[] };
@@ -52,6 +55,7 @@ const EVENT_ICONS: Record<TicketEventType, ReactNode> = {
   TicketAssigned: <UserCheck size={14} />,
   TicketCommented: <MessageSquare size={14} />,
   TicketDeleted: <Trash2 size={14} />,
+  TicketRated: <Star size={14} />,
 };
 
 /** Reconstitue l'événement de domaine depuis une entrée d'audit (pour le rejeu côté client). */
@@ -199,7 +203,7 @@ const TicketDetail = ({ data }: { data: TicketDetailsDto }) => {
               </button>
             </div>
             {tab === 'conversation' ? (
-              <Conversation ticketId={ticket.id} comments={ticket.comments} readOnly={readOnly} />
+              <Conversation ticketId={ticket.id} requester={ticket.requester} comments={ticket.comments} readOnly={readOnly} />
             ) : (
               <TimeTravel history={history} />
             )}
@@ -257,6 +261,15 @@ const TicketDetail = ({ data }: { data: TicketDetailsDto }) => {
               <span>Demandeur</span>
               <Person name={ticket.requester} />
             </div>
+            {ticket.satisfaction && (
+              <div className="prop">
+                <span>Avis du demandeur</span>
+                <div style={{ display: 'grid', gap: 4 }}>
+                  <StarRating value={ticket.satisfaction.rating} size={14} />
+                  {ticket.satisfaction.comment && <span className="small">« {ticket.satisfaction.comment} »</span>}
+                </div>
+              </div>
+            )}
           </div>
         </aside>
       </div>
@@ -294,15 +307,35 @@ const TicketDetail = ({ data }: { data: TicketDetailsDto }) => {
 
 const Conversation = ({
   ticketId,
+  requester,
   comments,
   readOnly,
 }: {
   ticketId: string;
+  requester: string;
   comments: TicketDetailsDto['ticket']['comments'];
   readOnly: boolean;
 }) => {
   const [body, setBody] = useState('');
   const [internal, setInternal] = useState(false);
+  const { actor } = useSession();
+  const { data: articles } = useKbArticles();
+  const published = (articles ?? []).filter((a) => a.published);
+
+  /** Insère une réponse type ou un article de la base de connaissances (à la suite du texte déjà saisi). */
+  const insert = (value: string) => {
+    const macro = MACROS.find((m) => m.id === value);
+    const article = published.find((a) => `kb:${a.id}` === value);
+    const text = macro
+      ? fillMacro(macro.body, { requester, agent: actor })
+      : article
+        ? `Voici la procédure « ${article.title} » :\n\n${article.body}\n\nElle est aussi disponible dans le centre d’aide de votre espace support.`
+        : '';
+    if (!text) return;
+    if (macro) setInternal(Boolean(macro.internal));
+    if (article) setInternal(false);
+    setBody((current) => (current.trim() ? `${current.trimEnd()}\n\n${text}` : text));
+  };
   const send = useCommand(
     (input: { body: string; internal: boolean }) => api.tickets.comment.mutate({ ticketId, ...input }),
     (_, i) => (i.internal ? 'Note interne ajoutée' : 'Réponse envoyée'),
@@ -352,7 +385,26 @@ const Conversation = ({
             aria-label="Message"
           />
           <div className="composer-actions">
-            <span className="muted small"><kbd>Ctrl</kbd> + <kbd>Entrée</kbd> pour envoyer</span>
+            <select className="select filter-select" aria-label="Réponses types" value="" onChange={(e) => insert(e.target.value)}>
+              <option value="">Réponses types…</option>
+              <optgroup label="Messages">
+                {MACROS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </optgroup>
+              {published.length > 0 && (
+                <optgroup label="Partager un article d’aide">
+                  {published.map((a) => (
+                    <option key={a.id} value={`kb:${a.id}`}>
+                      {a.title}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            <span className="muted small composer-hint"><kbd>Ctrl</kbd> + <kbd>Entrée</kbd> pour envoyer</span>
             <button className="btn btn-primary btn-sm" disabled={!body.trim() || send.isPending} onClick={submit}>
               {internal ? <StickyNote size={14} /> : <Send size={14} />}
               {internal ? 'Ajouter la note' : 'Envoyer'}

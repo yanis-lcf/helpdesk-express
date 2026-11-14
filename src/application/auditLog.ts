@@ -58,7 +58,9 @@ const diff = (before: TicketState, after: TicketState): readonly FieldChange[] =
 const describe = (event: TicketEvent, before: TicketState, after: TicketState): readonly FieldChange[] =>
   event.type === 'TicketCommented'
     ? [{ field: event.payload.internal ? 'internalNote' : 'comment', before: null, after: event.payload.body }]
-    : diff(before, after);
+    : event.type === 'TicketRated'
+      ? [{ field: 'satisfaction', before: null, after: `${event.payload.rating}/5${event.payload.comment ? ` — ${event.payload.comment}` : ''}` }]
+      : diff(before, after);
 
 /**
  * Projection « journal d'audit » : chaque événement brut, dans l'ordre chronologique

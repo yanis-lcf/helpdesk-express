@@ -113,6 +113,9 @@ export const makeTicketCommands = (deps: CommandDeps) => {
 
     deleteTicket: (input: { readonly ticketId: TicketId }, actor: Actor) =>
       run({ type: 'DeleteTicket', ticketId: input.ticketId, actor }),
+
+    rateTicket: (input: { readonly ticketId: TicketId; readonly rating: number; readonly comment: string }, actor: Actor) =>
+      run({ type: 'RateTicket', ticketId: input.ticketId, actor, rating: input.rating, comment: input.comment }),
   };
 };
 

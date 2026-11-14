@@ -44,6 +44,7 @@ export const evolve = (state: TicketState, event: TicketEvent): TicketState => {
           createdAt: event.occurredAt,
           updatedAt: event.occurredAt,
           resolvedAt: null,
+          satisfaction: null,
           version: 1,
         },
       };
@@ -80,6 +81,21 @@ export const evolve = (state: TicketState, event: TicketEvent): TicketState => {
                   createdAt: event.occurredAt,
                 },
               ],
+            }),
+          }
+        : state;
+
+    case 'TicketRated':
+      return state.kind === 'Active'
+        ? {
+            kind: 'Active',
+            ticket: touch(state.ticket, event.occurredAt, {
+              satisfaction: {
+                rating: event.payload.rating,
+                comment: event.payload.comment,
+                ratedBy: event.actor,
+                ratedAt: event.occurredAt,
+              },
             }),
           }
         : state;

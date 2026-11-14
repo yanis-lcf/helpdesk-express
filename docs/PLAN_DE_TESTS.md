@@ -1,18 +1,19 @@
 # Plan de tests – HelpDesk Express
 
-**217 tests automatisés** (187 Vitest + 30 Playwright) · couverture du code métier > 95 % (100 % du domaine)
+**265 tests automatisés** (229 Vitest + 36 Playwright) · couverture du code métier > 95 % (100 % du domaine)
 
 | Niveau | Outil | Fichiers | Tests | Commande |
 |---|---|---|---|---|
-| Unitaires – domaine (tickets, SLA, accès, identité) | Vitest | `tests/unit/domain/*` | 81 | `npm test` |
-| Unitaires – application (tickets, identité, portail) | Vitest | `tests/unit/application/*` | 29 | `npm test` |
+| Unitaires – domaine (tickets, SLA, accès, identité, satisfaction, base de connaissances) | Vitest | `tests/unit/domain/*` | 100 | `npm test` |
+| Unitaires – application (tickets, identité, portail, base de connaissances, exports, import) | Vitest | `tests/unit/application/*` | 39 | `npm test` |
 | Architecture | Vitest | `tests/architecture.test.ts` | 4 | `npm test` |
 | Intégration – Event Store & intégrité | Vitest | `tests/integration/eventStore.test.ts` | 16 | `npm test` |
 | Intégration – sécurité (scrypt, sessions, cookies, anti-force brute, annuaire) | Vitest | `tests/integration/security.test.ts` | 8 | `npm test` |
-| Intégration – API tRPC (back-office, authentification, rôles, portail) | Vitest | `tests/integration/api.test.ts` | 23 | `npm test` |
-| Interface – logique | Vitest | `tests/ui/logic.test.ts` | 17 | `npm test` |
+| Intégration – serveur de production (fichiers statiques, en-têtes de sécurité) | Vitest | `tests/integration/static.test.ts` | 5 | `npm test` |
+| Intégration – API tRPC (back-office, authentification, rôles, portail, base de connaissances, exports) | Vitest | `tests/integration/api.test.ts` | 28 | `npm test` |
+| Interface – logique (filtres, formatage, CSV, import, réponses types) | Vitest | `tests/ui/logic.test.ts` | 20 | `npm test` |
 | Interface – composants React | Vitest + Testing Library (jsdom) | `tests/ui/components.test.tsx` | 9 | `npm test` |
-| Bout en bout | Playwright (Chromium) | `e2e/*.spec.ts` | 30 | `npm run test:e2e` |
+| Bout en bout | Playwright (Chromium) | `e2e/*.spec.ts` | 36 | `npm run test:e2e` |
 
 Les tests de bout en bout démarrent un serveur dédié (ports 3101 / 5174) sur un dossier de données jetable,
 préalablement rempli par `npm run seed -- --force` (comptes et tickets de démonstration).
@@ -160,6 +161,51 @@ Chaque scénario porte un identifiant repris dans le nom du test (ex. `DOM-U04`)
 | USR-01 | Annuaire JSON : persistance au redémarrage, écriture atomique, e-mail insensible à la casse |
 | USR-02 | Annuaire : objets renvoyés par copie |
 
+### Serveur de production
+
+| ID | Scénario |
+|---|---|
+| WEB-01 | Route de l'application ⇒ `index.html` non mis en cache, avec CSP stricte, `X-Frame-Options: DENY`, `nosniff` |
+| WEB-02 | Fichier à empreinte (`/assets/…`) : bon type MIME, cache long `immutable` |
+| WEB-03 | Ressource absente avec extension ⇒ vraie 404 (pas de repli HTML) |
+| WEB-04 | **Traversée de répertoire (`../`, encodée ou non) ⇒ 403/404, fichier hors `dist` jamais servi** |
+| WEB-05 | Seules les lectures (GET/HEAD) sont servies |
+
+## 6 bis. Satisfaction, base de connaissances, réversibilité
+
+### Domaine (fonctions pures)
+
+| ID | Scénario |
+|---|---|
+| CSAT-01 | Ticket `RESOLVED` évalué ⇒ événement `TicketRated`, commentaire nettoyé |
+| CSAT-02 | Ticket ouvert, fermé, supprimé ou inexistant ⇒ évaluation refusée (code d'erreur adapté) |
+| CSAT-03 | Note invalide (0, 6, 2,5, NaN) ⇒ refusée |
+| CSAT-04 | Commentaire > 1 000 caractères ⇒ refusé |
+| CSAT-05 | Rejeu : le dernier avis est conservé (auteur, date), le statut n'est pas modifié |
+| CSAT-06 | Indicateurs : CSAT = part des notes 4–5, moyenne, répartition, derniers commentaires |
+| CSAT-07 | Aucun avis ⇒ indicateurs nuls, pas de division par zéro |
+| KB-01 | Normalisation : accents, casse, ponctuation, mots composés (« Wi-Fi » = « wifi ») |
+| KB-02 | Tokenisation : mots vides retirés, pluriels ramenés au singulier, doublons supprimés |
+| KB-03 | Pertinence : mot-clé > titre > contenu ; bonus de catégorie seulement si le texte correspond |
+| KB-04 | **Suggestions : seuil de pertinence, articles publiés uniquement, tri par score puis efficacité** |
+| KB-05 | Validation d'un article : titre et contenu obligatoires, catégorie connue, mots-clés normalisés et limités |
+| KB-06 | Statistiques : consultations, demandes évitées, articles les plus utiles |
+
+### Use cases
+
+| ID | Scénario |
+|---|---|
+| KBS-01 | La DSI crée un article ; il est suggéré pendant la saisie (résumé seulement, sans le contenu complet) |
+| KBS-02 | **Un brouillon n'est ni suggéré, ni lisible, ni « utile » depuis le portail, mais visible par la DSI** |
+| KBS-03 | Consultations et demandes évitées comptées sans perte en cas d'accès simultanés |
+| KBS-04 | Modification : contenu revalidé, date de mise à jour actualisée, compteurs conservés |
+| KBS-05 | Recherche libre : vide = articles les plus utiles d'abord ; filtre par catégorie |
+| SAT-01 | Confirmation avec avis : `TicketRated` puis clôture, au nom de l'employée |
+| SAT-02 | Avis invalide : rien n'est enregistré, le ticket reste à confirmer |
+| PORT-01 | **Export complet : journal scellé (empreintes), comptes sans empreinte de mot de passe, articles** |
+| PORT-02 | Export RGPD : profil, demandes et actions de la personne uniquement ; personne inconnue ⇒ erreur |
+| IMP-01 | Import en masse : comptes créés avec mot de passe provisoire ; lignes invalides et doublons signalés par numéro de ligne |
+
 ## 7. API tRPC
 
 | ID | Scénario |
@@ -185,6 +231,11 @@ Chaque scénario porte un identifiant repris dans le nom du test (ex. `DOM-U04`)
 | AUTH-09 | Admin : création de compte, e-mail unique (409), mot de passe faible refusé, auto-rétrogradation interdite |
 | POR-API-01 | **Portail : seulement ses demandes, sans notes internes ni étiquettes ; demande d'un collègue ⇒ 404** |
 | POR-API-02 | Cycle déclaration → résolution DSI → confirmation ; confirmation prématurée ⇒ 403 ; ticket fermé ⇒ 412 |
+| KB-API-01 | La DSI rédige ; l'employée reçoit la suggestion, lit l'article, le marque utile ⇒ compteurs du tableau de bord |
+| KB-API-02 | **Employé : rédaction, modification, liste des brouillons ⇒ 403 ; anonyme ⇒ 401** ; article invalide ⇒ 400 |
+| SAT-API-01 | Confirmation avec avis : note visible sur la fiche DSI et dans le CSAT |
+| SAT-API-02 | Note hors bornes ⇒ 400 à la frontière |
+| EXP-API-01 | **Exports et import réservés aux administrateurs (agent, employé ⇒ 403)** ; mot de passe provisoire généré ; personne inconnue ⇒ 404 |
 
 ## 8. Architecture
 
@@ -207,6 +258,9 @@ Chaque scénario porte un identifiant repris dans le nom du test (ex. `DOM-U04`)
 | CMP-05..06 | Saisie d'étiquettes : ajout, normalisation, doublons, retrait, lecture seule |
 | CMP-07..08 | Badges statut/priorité/SLA |
 | CMP-09 | Boîte de confirmation : confirmer, Échap |
+| UI-I01 | Import CSV Excel : BOM, séparateur « ; », guillemets échappés, en-têtes accentués, profils en français |
+| UI-I02 | Séparateur « , » détecté ; colonnes obligatoires manquantes signalées |
+| UI-M01 | Réponses types : prénom du demandeur et nom de l'agent insérés, aucune variable restante |
 
 ## 10. Bout en bout (Playwright – vrai serveur, vrai navigateur)
 
@@ -242,6 +296,12 @@ Chaque scénario porte un identifiant repris dans le nom du test (ex. `DOM-U04`)
 | E2E-28 | L'administrateur crée un compte, qui peut aussitôt se connecter |
 | E2E-29 | Compte désactivé ⇒ connexion refusée ; un agent n'accède pas à l'administration |
 | E2E-30 | Portail et connexion sur mobile (390 px) : aucun débordement horizontal |
+| E2E-31 | **Auto-dépannage : une solution proposée pendant la saisie règle le problème ⇒ retour au portail, aucun ticket créé** |
+| E2E-32 | Centre d'aide : recherche tolérante (« wifi deconnexions »), lecture de l'article, « Oui, c'est réglé » |
+| E2E-33 | La DSI rédige un article (aperçu des étapes) et le publie ; il est aussitôt trouvable par une employée |
+| E2E-34 | **L'employée note l'intervention en confirmant ; l'avis apparaît sur la fiche DSI** |
+| E2E-35 | Réponse type insérée et personnalisée (« Bonjour Claire », signature de l'agent), puis envoyée |
+| E2E-36 | **Import CSV (1 compte créé, 1 ligne rejetée, identifiants provisoires téléchargés) puis export complet vérifié (intégrité, nouveau compte présent, aucune empreinte de mot de passe)** |
 
 ## Recette manuelle complémentaire
 
@@ -251,3 +311,7 @@ Chaque scénario porte un identifiant repris dans le nom du test (ex. `DOM-U04`)
 4. Ouvrir deux navigateurs (un employé, un agent) : une demande déclarée au portail apparaît dans le back-office en moins de 5 s, et la réponse de l'agent dans le portail.
 5. Copier le cookie `hdx_session` d'un employé et en modifier un caractère : l'API doit répondre 401.
 6. Ouvrir l'export CSV dans Excel : accents et colonnes corrects.
+7. Production : `npm run build && npm start`, puis `curl -I http://localhost:3001/` : en-têtes `Content-Security-Policy`, `X-Frame-Options` présents ; `curl http://localhost:3001/healthz` ⇒ `{"status":"ok"}`. Altérer `events.jsonl` ⇒ `/healthz` répond 503.
+8. Console du navigateur en production : aucune violation de CSP, aucune requête vers un domaine tiers (onglet Réseau).
+9. Docker : `docker compose up -d`, attendre l'état `healthy` (`docker compose ps`), se connecter avec `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+10. Importer le CSV d'annuaire RH réel exporté depuis Excel ; ouvrir le fichier d'identifiants provisoires dans Excel.

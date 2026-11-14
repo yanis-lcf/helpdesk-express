@@ -8,6 +8,7 @@ import {
   type CommentTicket,
   type CreateTicket,
   type DeleteTicket,
+  type RateTicket,
   type DomainError,
   type Ticket,
   type TicketChanges,
@@ -26,6 +27,7 @@ export const LIMITS = {
   comment: 5000,
   tag: 30,
   tags: 10,
+  feedback: 1000,
 } as const;
 
 type Decision = Result<DomainError, readonly TicketEvent[]>;
@@ -46,6 +48,8 @@ export const decide = (state: TicketState, command: TicketCommand, now: Timestam
       return decideComment(state, command, now);
     case 'DeleteTicket':
       return decideDelete(state, command, now);
+    case 'RateTicket':
+      return decideRate(state, command, now);
   }
 };
 
@@ -209,6 +213,27 @@ const decideComment = (state: TicketState, c: CommentTicket, now: Timestamp): De
       actor: c.actor,
       payload: { commentId: c.commentId, body, internal: c.internal },
     },
+  ]);
+};
+
+// ---------- Satisfaction ----------
+
+/**
+ * Règle : on évalue une résolution, donc uniquement un ticket RESOLVED (pas encore clôturé).
+ * La note est un entier de 1 à 5 ; le commentaire est facultatif.
+ */
+const decideRate = (state: TicketState, c: RateTicket, now: Timestamp): Decision => {
+  const target = ensureModifiable(state, c.ticketId);
+  if (!target.ok) return target;
+  if (target.value.status !== 'RESOLVED')
+    return err(DomainErrors.validation('Seule une demande résolue peut être évaluée.'));
+  if (!Number.isInteger(c.rating) || c.rating < 1 || c.rating > 5)
+    return err(DomainErrors.validation('La note doit être comprise entre 1 et 5.'));
+  const comment = c.comment.trim();
+  if (comment.length > LIMITS.feedback) return tooLong('Le commentaire', LIMITS.feedback);
+
+  return ok([
+    { type: 'TicketRated', ticketId: c.ticketId, occurredAt: now, actor: c.actor, payload: { rating: c.rating, comment } },
   ]);
 };
 

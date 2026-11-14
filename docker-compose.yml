@@ -1,0 +1,25 @@
+# Démarrage : docker compose up -d   →   http://localhost:3000
+# Premier compte administrateur : renseignez ADMIN_EMAIL / ADMIN_PASSWORD (créé seulement si l'annuaire est vide).
+# Données de démonstration (optionnel) : docker compose run --rm helpdesk node dist-server/scripts/seed.mjs --force
+services:
+  helpdesk:
+    build: .
+    image: helpdesk-express:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      # Secret de signature des sessions (≥ 32 caractères). Sinon généré et conservé dans /data.
+      SESSION_SECRET: ${SESSION_SECRET:-}
+      ADMIN_NAME: ${ADMIN_NAME:-Administrateur}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Derrière un reverse proxy HTTPS (Caddy, Traefik, Nginx) :
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+    volumes:
+      - helpdesk-data:/data
+
+volumes:
+  helpdesk-data:

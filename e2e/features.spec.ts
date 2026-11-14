@@ -11,11 +11,11 @@ test.describe('Fonctionnalités avancées', () => {
     const card = page.locator('.kcard', { hasText: title });
     await expect(page.locator('[data-status="OPEN"]').locator('.kcard', { hasText: title })).toBeVisible();
 
-    await card.dragTo(page.locator('[data-status="IN_PROGRESS"]'));
+    await card.dragTo(page.locator('[data-status="IN_PROGRESS"]'), { targetPosition: { x: 60, y: 40 } });
     await expect(toast(page, /→ En cours/)).toBeVisible();
     await expect(page.locator('[data-status="IN_PROGRESS"]').locator('.kcard', { hasText: title })).toBeVisible();
 
-    await page.locator('.kcard', { hasText: title }).dragTo(page.locator('[data-status="CLOSED"]'));
+    await page.locator('.kcard', { hasText: title }).dragTo(page.locator('[data-status="CLOSED"]'), { targetPosition: { x: 60, y: 40 } });
     await expect(page.getByRole('dialog')).toContainText('Fermer définitivement ce ticket ?');
     await page.getByRole('dialog').getByRole('button', { name: 'Fermer le ticket' }).click();
     await expect(page.locator('[data-status="CLOSED"]').locator('.kcard', { hasText: title })).toBeVisible();

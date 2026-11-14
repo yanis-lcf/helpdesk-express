@@ -5,6 +5,7 @@ import { SLA_TARGET_HOURS } from '../../../domain';
 import { Avatar, PriorityBadge, StatusBadge } from '../../components/Badges';
 import { EmptyState, LoadingRows } from '../../components/EmptyState';
 import { Modal } from '../../components/Modal';
+import { RATING_LABELS, StarRating } from '../../components/Rating';
 import { api, errorCode, type PortalTicketDto } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { CATEGORY_LABELS, formatDateTime, formatFullDate, formatRelative, IMPACT_LABELS } from '../../lib/format';
@@ -40,9 +41,18 @@ export const PortalTicketPage = () => {
   const [message, setMessage] = useState('');
   const [reopenOpen, setReopenOpen] = useState(false);
   const [reason, setReason] = useState('');
+  const [rating, setRating] = useState(0);
+  const [feedback, setFeedback] = useState('');
 
   const reply = useCommand((body: string) => api.portal.reply.mutate({ ticketId, body }), 'Message envoyé à la DSI');
-  const confirm = useCommand(() => api.portal.confirmResolution.mutate({ ticketId }), 'Merci ! Votre demande est clôturée.');
+  const confirm = useCommand(
+    () =>
+      api.portal.confirmResolution.mutate({
+        ticketId,
+        feedback: rating > 0 ? { rating, comment: feedback.trim() } : undefined,
+      }),
+    'Merci ! Votre demande est clôturée.',
+  );
   const reopen = useCommand((r: string) => api.portal.reopen.mutate({ ticketId, reason: r }), 'Demande rouverte : la DSI est prévenue');
 
   if (isPending) return <div className="card"><LoadingRows /></div>;
@@ -98,6 +108,22 @@ export const PortalTicketPage = () => {
           <div>
             <h2>La DSI indique avoir résolu votre demande</h2>
             <p className="muted">Tout fonctionne de nouveau ? Votre confirmation clôture la demande.</p>
+            <div className="rate">
+              <span className="small">Votre avis sur l’intervention (facultatif) :</span>
+              <StarRating value={rating} onChange={setRating} label="Votre avis sur l’intervention" />
+              {rating > 0 && <span className="small muted">{RATING_LABELS[rating]}</span>}
+            </div>
+            {rating > 0 && (
+              <textarea
+                className="textarea"
+                rows={2}
+                maxLength={1000}
+                aria-label="Commentaire pour la DSI"
+                placeholder={rating <= 3 ? 'Qu’aurions-nous pu mieux faire ?' : 'Un mot pour l’équipe ? (facultatif)'}
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+              />
+            )}
           </div>
           <div className="confirm-actions">
             <button className="btn" onClick={() => setReopenOpen(true)}>
@@ -107,6 +133,14 @@ export const PortalTicketPage = () => {
               <Check size={15} /> Oui, c’est résolu
             </button>
           </div>
+        </section>
+      )}
+
+      {ticket.satisfaction && (
+        <section className="card card-pad rated" aria-label="Votre avis">
+          <span className="small muted">Votre avis</span>
+          <StarRating value={ticket.satisfaction.rating} size={16} />
+          {ticket.satisfaction.comment && <span className="small">« {ticket.satisfaction.comment} »</span>}
         </section>
       )}
 

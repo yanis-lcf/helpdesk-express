@@ -21,6 +21,9 @@ export type TeamMemberDto = Outputs['meta']['team'][number];
 export type CurrentUserDto = NonNullable<Outputs['auth']['me']>;
 export type PortalTicketDto = Outputs['portal']['ticket'];
 export type UserDto = Outputs['admin']['users'][number];
+export type ArticleDto = Outputs['kb']['get'];
+export type ArticleSummaryDto = Outputs['kb']['search'][number];
+export type ImportReportDto = Outputs['admin']['importUsers'];
 
 export const errorMessage = (error: unknown): string =>
   error instanceof TRPCClientError || error instanceof Error ? error.message : String(error);

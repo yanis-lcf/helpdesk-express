@@ -1,4 +1,4 @@
-import { LayoutDashboard, LogOut, Moon, Plus, Sun, Ticket, Zap } from 'lucide-react';
+import { BookOpen, LayoutDashboard, LogOut, Moon, Plus, Sun, Ticket, Zap } from 'lucide-react';
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { useSession } from '../lib/session';
@@ -24,6 +24,9 @@ export const PortalLayout = () => {
         <nav className="portal-nav" aria-label="Portail">
           <NavLink to="/portal" end>
             <Ticket size={16} /> <span>Mes demandes</span>
+          </NavLink>
+          <NavLink to="/portal/help">
+            <BookOpen size={16} /> <span>Centre d’aide</span>
           </NavLink>
           {isStaff && (
             <NavLink to="/dashboard">

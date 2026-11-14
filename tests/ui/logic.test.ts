@@ -4,6 +4,8 @@ import type { AuditEntryDto, TicketDto } from '../../src/ui/lib/api';
 import { auditToCsv, csvCell } from '../../src/ui/lib/csv';
 import { applyFilters, countByView, DEFAULT_FILTERS, matchesSearch, sortTickets } from '../../src/ui/lib/filters';
 import { formatDuration, formatFieldValue, formatRelative, formatSla, initials, colorFor } from '../../src/ui/lib/format';
+import { parseUsersCsv } from '../../src/ui/lib/download';
+import { fillMacro, MACROS } from '../../src/ui/lib/macros';
 import { AGENT, ev, OTHER, T } from '../helpers/fixtures';
 
 const tickets = projectActiveTickets(
@@ -115,5 +117,32 @@ describe('Export CSV de l’audit', () => {
     expect(lines).toHaveLength(2);
     expect(lines[1]).toContain('HD-0001');
     expect(lines[1]).toContain('Statut: Ouvert -> Résolu');
+  });
+});
+
+describe('Import CSV et réponses types', () => {
+  it('UI-I01 CSV Excel (BOM, « ; », guillemets, accents dans les en-têtes, profils en français)', () => {
+    const csv = '﻿Nom;E-mail;Profil;Service;Fonction\r\n"Bernard; Julie";julie@x.fr;Administrateur;RH;"Chargée ""recrutement"""\r\nTom;tom@x.fr;;IT;\r\n\r\n';
+    expect(parseUsersCsv(csv)).toEqual({
+      error: null,
+      rows: [
+        { name: 'Bernard; Julie', email: 'julie@x.fr', role: 'ADMIN', department: 'RH', jobTitle: 'Chargée "recrutement"' },
+        { name: 'Tom', email: 'tom@x.fr', role: 'EMPLOYEE', department: 'IT', jobTitle: '' },
+      ],
+    });
+  });
+
+  it('UI-I02 séparateur « , » détecté ; colonnes obligatoires manquantes signalées', () => {
+    expect(parseUsersCsv('name,email\nA,a@x.fr').rows).toHaveLength(1);
+    expect(parseUsersCsv('prenom;telephone\nA;06').error).toMatch(/obligatoires/);
+  });
+
+  it('UI-M01 réponses types : prénom du demandeur et nom de l’agent insérés', () => {
+    const ack = MACROS.find((m) => m.id === 'ack')!;
+    const text = fillMacro(ack.body, { requester: 'Claire Dubois', agent: 'Sarah Benali' });
+    expect(text).toContain('Bonjour Claire,');
+    expect(text).toContain('Sarah Benali');
+    expect(text).not.toMatch(/\{\w+\}/);
+    expect(MACROS.filter((m) => m.internal).map((m) => m.id)).toEqual(['supplier']);
   });
 });

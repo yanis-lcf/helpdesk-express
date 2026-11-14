@@ -13,6 +13,8 @@ const setup = async () => {
     queries: app.queries,
     portal: app.portal,
     identity: app.identity,
+    knowledge: app.knowledge,
+    portability: app.portability,
     loginLimiter: createRateLimiter({ max: 3, windowMs: 60_000 }),
   });
   const sessions: { opened: string[]; closed: number } = { opened: [], closed: 0 };
@@ -218,5 +220,62 @@ describe('API tRPC — portail employé', () => {
     await claire.portal.confirmResolution({ ticketId });
     expect((await api.tickets.byId({ ticketId })).ticket.status).toBe('CLOSED');
     expect((await failure(claire.portal.reply({ ticketId, body: 'Encore moi' }))).code).toBe('PRECONDITION_FAILED');
+  });
+});
+
+describe('API tRPC — base de connaissances, satisfaction, réversibilité', () => {
+  const article = { title: 'VPN : authentification échouée', body: 'Resynchronisez votre mot de passe.', category: 'NETWORK' as const, keywords: ['vpn', 'forticlient'], published: true };
+
+  it('KB-API-01 la DSI rédige, l’employé reçoit la suggestion, lit l’article et signale qu’il est résolu', async () => {
+    const { as } = await setup();
+    const created = await as(USERS.agent).kb.create(article);
+    expect(created.author).toBe(USERS.agent.name);
+    const claire = as(USERS.claire);
+    const [suggestion] = await claire.kb.suggest({ text: 'Mon VPN refuse la connexion' });
+    expect(suggestion).toMatchObject({ id: created.id, title: article.title });
+    expect((await claire.kb.read({ id: created.id })).body).toBe(article.body);
+    await claire.kb.helpful({ id: created.id });
+    expect((await as(USERS.agent).dashboard.stats()).knowledge).toMatchObject({ views: 1, deflections: 1 });
+  });
+
+  it('KB-API-02 un employé ne peut ni rédiger, ni lister les brouillons ; anonyme refusé', async () => {
+    const { as } = await setup();
+    const claire = as(USERS.claire);
+    for (const call of [claire.kb.create(article), claire.kb.list(), claire.kb.update({ id: 'x', ...article })])
+      expect((await failure(call)).code).toBe('FORBIDDEN');
+    expect((await failure(as(null).kb.suggest({ text: 'vpn' }))).code).toBe('UNAUTHORIZED');
+    expect((await failure(as(USERS.agent).kb.create({ ...article, title: '' }))).code).toBe('BAD_REQUEST');
+  });
+
+  it('SAT-API-01 confirmation avec avis : note visible par la DSI et dans les indicateurs', async () => {
+    const { api, as } = await setup();
+    const claire = as(USERS.claire);
+    const { ticketId } = await claire.portal.submit({ title: 'Écran noir', category: 'HARDWARE' });
+    await api.tickets.update({ ticketId, changes: { status: 'RESOLVED' } });
+    await claire.portal.confirmResolution({ ticketId, feedback: { rating: 4, comment: 'Merci' } });
+    expect((await api.tickets.byId({ ticketId })).ticket.satisfaction).toMatchObject({ rating: 4, comment: 'Merci' });
+    expect((await api.dashboard.stats()).satisfaction).toMatchObject({ responses: 1, csat: 1 });
+  });
+
+  it('SAT-API-02 note hors bornes refusée à la frontière (BAD_REQUEST)', async () => {
+    const { api, as } = await setup();
+    const claire = as(USERS.claire);
+    const { ticketId } = await claire.portal.submit({ title: 'Écran noir', category: 'HARDWARE' });
+    await api.tickets.update({ ticketId, changes: { status: 'RESOLVED' } });
+    expect((await failure(claire.portal.confirmResolution({ ticketId, feedback: { rating: 7 } }))).code).toBe('BAD_REQUEST');
+  });
+
+  it('EXP-API-01 exports et import réservés aux administrateurs', async () => {
+    const { as } = await setup();
+    for (const who of [USERS.agent, USERS.claire]) {
+      const caller = as(who);
+      for (const call of [caller.admin.exportAll(), caller.admin.exportPerson({ userId: USERS.claire.id }), caller.admin.importUsers({ rows: [] })])
+        expect((await failure(call)).code).toBe('FORBIDDEN');
+    }
+    const admin = as(USERS.admin);
+    expect((await admin.admin.exportAll()).counts.users).toBe(5);
+    const report = await admin.admin.importUsers({ rows: [{ name: 'Julie Bernard', email: 'julie@test.fr', role: 'EMPLOYEE' }] });
+    expect(report.created[0]?.temporaryPassword).toMatch(/^Bienvenue-\d{4}-[0-9a-f]+$/);
+    expect((await failure(admin.admin.exportPerson({ userId: 'inconnu' }))).code).toBe('NOT_FOUND');
   });
 });
