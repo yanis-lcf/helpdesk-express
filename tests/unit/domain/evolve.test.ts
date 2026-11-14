@@ -15,6 +15,7 @@ describe('evolve / rehydrate', () => {
         category: 'HARDWARE',
         status: 'OPEN',
         requester: 'Claire',
+        requesterId: null,
         assignee: null,
         tags: [],
         comments: [],

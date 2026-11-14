@@ -60,6 +60,7 @@ export type CreateTicketInput = {
   readonly priority: Priority;
   readonly category: Category;
   readonly requester?: string;
+  readonly requesterId?: string | null;
   readonly tags?: readonly string[];
   readonly assignee?: Actor | null;
 };
@@ -80,6 +81,7 @@ export const makeTicketCommands = (deps: CommandDeps) => {
         priority: input.priority,
         category: input.category,
         requester: input.requester ?? '',
+        requesterId: input.requesterId ?? null,
         tags: input.tags ?? [],
       });
       // Assignation immédiate optionnelle : un second événement, explicite dans l'historique.

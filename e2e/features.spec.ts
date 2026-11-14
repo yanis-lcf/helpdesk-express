@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { createTicket, toast, uniqueTitle } from './helpers';
+import { createTicket, login, toast, uniqueTitle } from './helpers';
 
 test.describe('Fonctionnalités avancées', () => {
+  test.beforeEach(({ page }) => login(page, 'admin'));
+
   test('E2E-11 Kanban : glisser-déposer change le statut (et la fermeture demande confirmation)', async ({ page }) => {
     const title = uniqueTitle('Kanban');
     await createTicket(page, { title });
@@ -44,6 +46,7 @@ test.describe('Fonctionnalités avancées', () => {
     const title = uniqueTitle('Palette introuvable ailleurs');
     const id = await createTicket(page, { title });
     await page.goto('/dashboard');
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await page.keyboard.press('Control+k');
     await page.getByLabel('Rechercher', { exact: true }).fill(title);
     await page.keyboard.press('Enter');
@@ -64,16 +67,14 @@ test.describe('Fonctionnalités avancées', () => {
     await expect(page.getByText('Aucun ticket ne correspond')).toBeVisible();
   });
 
-  test('E2E-15 changement d’agent : les actions sont attribuées au bon acteur', async ({ page }) => {
-    await page.goto('/tickets');
-    await page.getByLabel('Agent connecté').selectOption('Sarah Benali');
+  test('E2E-15 traçabilité : les actions sont attribuées à l’agent connecté', async ({ page }) => {
+    await login(page, 'agent');
     const title = uniqueTitle('Attribution');
     await createTicket(page, { title });
     await expect(page.getByText(/Ouvert par Sarah Benali/)).toBeVisible();
     await page.goto('/events');
     await page.getByLabel('Rechercher un ticket').fill(title);
     await expect(page.locator('tbody tr').first()).toContainText('Sarah Benali');
-    await page.getByLabel('Agent connecté').selectOption('Yanis Loucif');
   });
 
   test('E2E-16 journal d’audit : intégrité vérifiée et export CSV', async ({ page }) => {

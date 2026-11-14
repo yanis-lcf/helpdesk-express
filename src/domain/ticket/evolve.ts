@@ -36,6 +36,7 @@ export const evolve = (state: TicketState, event: TicketEvent): TicketState => {
           category: event.payload.category ?? 'OTHER',
           status: 'OPEN',
           requester: event.payload.requester ?? event.actor,
+          requesterId: event.payload.requesterId ?? null,
           assignee: null,
           tags: event.payload.tags ?? [],
           comments: [],

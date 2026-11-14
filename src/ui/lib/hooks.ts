@@ -75,3 +75,17 @@ export const useHotkey = (combo: string, handler: (e: KeyboardEvent) => void, en
     return () => window.removeEventListener('keydown', listener);
   }, [combo, handler, enabled]);
 };
+
+// ---------- Portail employé ----------
+
+export const usePortalTickets = () =>
+  useQuery({ queryKey: ['portal', 'tickets'], queryFn: () => api.portal.myTickets.query(), ...LIVE });
+
+export const usePortalTicket = (ticketId: string) =>
+  useQuery({ queryKey: ['portal', 'ticket', ticketId], queryFn: () => api.portal.ticket.query({ ticketId }), ...LIVE, retry: false });
+
+// ---------- Annuaire & administration ----------
+
+export const useDirectory = () => useQuery({ queryKey: ['directory'], queryFn: () => api.meta.directory.query(), staleTime: 60_000 });
+
+export const useUsers = () => useQuery({ queryKey: ['admin', 'users'], queryFn: () => api.admin.users.query() });

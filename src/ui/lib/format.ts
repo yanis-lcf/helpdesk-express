@@ -1,4 +1,4 @@
-import type { Category, Priority, SlaStatus, Status, TicketEventType } from '../../domain';
+import type { Category, Priority, Role, SlaStatus, Status, TicketEventType } from '../../domain';
 
 export const PRIORITY_LABELS: Record<Priority, string> = { LOW: 'Basse', MEDIUM: 'Moyenne', HIGH: 'Haute' };
 
@@ -110,3 +110,12 @@ const AVATAR_COLORS = ['#5048e5', '#0b8fd6', '#0f9b6c', '#c77700', '#d6336c', '#
 /** Couleur stable dérivée du nom. */
 export const colorFor = (name: string) =>
   AVATAR_COLORS[[...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % AVATAR_COLORS.length]!;
+
+export const ROLE_LABELS: Record<Role, string> = { EMPLOYEE: 'Employé', AGENT: 'Agent DSI', ADMIN: 'Administrateur DSI' };
+
+/** Côté employé, on parle d'impact plutôt que de priorité. */
+export const IMPACT_LABELS: Record<Priority, { title: string; hint: string }> = {
+  LOW: { title: 'Je peux travailler normalement', hint: 'Demande ou gêne mineure' },
+  MEDIUM: { title: 'Je suis gêné(e) dans mon travail', hint: 'Une partie de mon activité est ralentie' },
+  HIGH: { title: 'Je suis bloqué(e)', hint: 'Impossible de travailler, ou plusieurs personnes touchées' },
+};

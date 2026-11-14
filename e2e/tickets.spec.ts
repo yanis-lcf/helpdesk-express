@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test';
-import { createTicket, toast, uniqueTitle } from './helpers';
+import { createTicket, login, toast, uniqueTitle } from './helpers';
 
 test.describe('Cycle de vie d’un ticket', () => {
+  test.beforeEach(({ page }) => login(page, 'admin'));
+
   test('E2E-01 navigation : redirection vers le tableau de bord et menu principal', async ({ page }) => {
     await page.goto('/');
     await expect(page).toHaveURL(/\/dashboard$/);

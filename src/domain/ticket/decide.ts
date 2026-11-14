@@ -121,6 +121,7 @@ const decideCreate = (state: TicketState, c: CreateTicket, now: Timestamp): Deci
         priority: c.priority,
         category: c.category,
         requester,
+        requesterId: c.requesterId ?? null,
         tags: tags.value,
       },
     },

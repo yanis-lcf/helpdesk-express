@@ -6,7 +6,8 @@ import { defineConfig, devices } from '@playwright/test';
  */
 const API_PORT = '3101';
 const WEB_PORT = 5174;
-const STORE = `data/e2e/events-${Date.now()}.jsonl`;
+/** Données jetables : journal + annuaire de démonstration recréés à chaque exécution. */
+const DATA_DIR = `data/e2e/run-${Date.now()}`;
 
 export default defineConfig({
   testDir: 'e2e',
@@ -24,9 +25,9 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 } } }],
   webServer: [
     {
-      command: 'npx tsx src/infrastructure/server.ts',
+      command: 'npx tsx src/infrastructure/scripts/seed.ts --force && npx tsx src/infrastructure/server.ts',
       port: Number(API_PORT),
-      env: { API_PORT, EVENT_STORE_FILE: STORE },
+      env: { API_PORT, DATA_DIR },
       reuseExistingServer: false,
       timeout: 60_000,
     },

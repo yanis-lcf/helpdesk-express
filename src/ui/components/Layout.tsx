@@ -1,8 +1,10 @@
-import { Columns3, LayoutDashboard, Moon, Plus, Search, ShieldCheck, Sun, Ticket, Zap } from 'lucide-react';
+import { Columns3, ExternalLink, LayoutDashboard, LogOut, Moon, Plus, Search, ShieldCheck, Sun, Ticket, Users, Zap } from 'lucide-react';
 import { createContext, useCallback, useContext, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
-import { useCommand, useHotkey, useTeam, useTickets } from '../lib/hooks';
+import { useAuth } from '../lib/auth';
+import { ROLE_LABELS } from '../lib/format';
+import { useCommand, useDirectory, useHotkey, useTeam, useTickets } from '../lib/hooks';
 import { useSession } from '../lib/session';
 import { Avatar } from './Badges';
 import { CommandPalette } from './CommandPalette';
@@ -15,8 +17,10 @@ export const useUi = () => useContext(UiContext);
 
 export const Layout = () => {
   const navigate = useNavigate();
-  const { actor, setActor, theme, toggleTheme } = useSession();
+  const { actor, theme, toggleTheme } = useSession();
+  const { user, isAdmin, logout } = useAuth();
   const { data: team = [] } = useTeam();
+  const { data: directory = [] } = useDirectory();
   const { data: tickets = [] } = useTickets();
   const [newTicketOpen, setNewTicketOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -48,6 +52,10 @@ export const Layout = () => {
   const backlog = tickets.filter((t) => t.status === 'OPEN' || t.status === 'IN_PROGRESS').length;
   const mine = tickets.filter((t) => t.assignee === actor && (t.status === 'OPEN' || t.status === 'IN_PROGRESS')).length;
   const member = team.find((m) => m.name === actor);
+  const signOut = async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <UiContext.Provider value={{ openNewTicket, openPalette }}>
@@ -80,26 +88,34 @@ export const Layout = () => {
           <NavLink to="/events" className="nav-link">
             <ShieldCheck size={17} /> <span className="label">Journal d'audit</span>
           </NavLink>
+          {isAdmin && (
+            <>
+              <div className="nav-section">Administration</div>
+              <NavLink to="/admin/users" className="nav-link">
+                <Users size={17} /> <span className="label">Utilisateurs</span>
+              </NavLink>
+            </>
+          )}
+          <NavLink to="/portal" className="nav-link" title="Le portail tel que le voient les employés (vos propres demandes)">
+            <ExternalLink size={17} /> <span className="label">Portail employé</span>
+          </NavLink>
 
           <div className="sidebar-footer">
-            <div className="actor-switch">
+            <div className="actor-switch" aria-label="Utilisateur connecté" title={user?.email}>
               <Avatar name={actor} size="lg" />
               <div style={{ minWidth: 0, flex: 1 }}>
-                <select value={actor} onChange={(e) => setActor(e.target.value)} aria-label="Agent connecté">
-                  {!member && <option value={actor}>{actor}</option>}
-                  {team.map((m) => (
-                    <option key={m.name} value={m.name}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-                <small>{member?.role ?? 'Agent'}</small>
+                <b className="actor-name">{actor}</b>
+                <small>{member?.role ?? (user ? ROLE_LABELS[user.role] : '')}</small>
               </div>
             </div>
             <div className="sidebar-tools">
               <button onClick={toggleTheme} aria-label="Changer de thème">
                 {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
                 <span>{theme === 'dark' ? 'Clair' : 'Sombre'}</span>
+              </button>
+              <button onClick={signOut} aria-label="Se déconnecter">
+                <LogOut size={14} />
+                <span>Quitter</span>
               </button>
             </div>
           </div>
@@ -135,7 +151,7 @@ export const Layout = () => {
               }
             }}
           >
-            <NewTicketForm team={team} submitting={create.isPending} onSubmit={submitNewTicket} onCancel={closeNewTicket} />
+            <NewTicketForm team={team} requesters={directory.map((d) => d.name)} submitting={create.isPending} onSubmit={submitNewTicket} onCancel={closeNewTicket} />
           </div>
         </Modal>
       )}

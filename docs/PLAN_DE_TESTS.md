@@ -1,17 +1,21 @@
 # Plan de tests – HelpDesk Express
 
-**159 tests automatisés** · 97 % de couverture du code métier (100 % du domaine)
+**217 tests automatisés** (187 Vitest + 30 Playwright) · couverture du code métier > 95 % (100 % du domaine)
 
 | Niveau | Outil | Fichiers | Tests | Commande |
 |---|---|---|---|---|
-| Unitaires – domaine | Vitest | `tests/unit/domain/*` | 64 | `npm test` |
-| Unitaires – application | Vitest | `tests/unit/application/*` | 18 | `npm test` |
+| Unitaires – domaine (tickets, SLA, accès, identité) | Vitest | `tests/unit/domain/*` | 81 | `npm test` |
+| Unitaires – application (tickets, identité, portail) | Vitest | `tests/unit/application/*` | 29 | `npm test` |
 | Architecture | Vitest | `tests/architecture.test.ts` | 4 | `npm test` |
 | Intégration – Event Store & intégrité | Vitest | `tests/integration/eventStore.test.ts` | 16 | `npm test` |
-| Intégration – API tRPC | Vitest | `tests/integration/api.test.ts` | 11 | `npm test` |
+| Intégration – sécurité (scrypt, sessions, cookies, anti-force brute, annuaire) | Vitest | `tests/integration/security.test.ts` | 8 | `npm test` |
+| Intégration – API tRPC (back-office, authentification, rôles, portail) | Vitest | `tests/integration/api.test.ts` | 23 | `npm test` |
 | Interface – logique | Vitest | `tests/ui/logic.test.ts` | 17 | `npm test` |
 | Interface – composants React | Vitest + Testing Library (jsdom) | `tests/ui/components.test.tsx` | 9 | `npm test` |
-| Bout en bout | Playwright (Chromium) | `e2e/*.spec.ts` | 20 | `npm run test:e2e` |
+| Bout en bout | Playwright (Chromium) | `e2e/*.spec.ts` | 30 | `npm run test:e2e` |
+
+Les tests de bout en bout démarrent un serveur dédié (ports 3101 / 5174) sur un dossier de données jetable,
+préalablement rempli par `npm run seed -- --force` (comptes et tickets de démonstration).
 
 `npm run test:all` enchaîne vérification de types, tests unitaires/intégration et E2E.
 `npm run test:coverage` produit le rapport de couverture.
@@ -121,19 +125,66 @@ Chaque scénario porte un identifiant repris dans le nom du test (ex. `DOM-U04`)
 | JSL-04 | Lignes vides et fins de ligne Windows tolérées |
 | JSL-05 | Accents, guillemets, emoji préservés et intégrité valide |
 
+### Contrôle d'accès et identité (domaine + application)
+
+| ID | Scénario |
+|---|---|
+| ACC-01 | Rôles : seuls AGENT et ADMIN appartiennent à la DSI ; seul ADMIN administre |
+| ACC-02 | **Un employé ne voit que les tickets dont il est le demandeur** (lien par identifiant, pas par nom) |
+| ACC-03 | La DSI voit tous les tickets |
+| ACC-04 | **Les notes internes sont retirées de la vue demandeur** |
+| ACC-05 | Actions du demandeur par statut : répondre ; confirmer / rouvrir seulement si RÉSOLU ; rien si FERMÉ |
+| IDN-01..03 | Validation d'un compte (normalisation e-mail, rôle, longueurs) et politique de mot de passe |
+| ID-01 | Authentification : succès, mauvais mot de passe, compte inconnu (même erreur) |
+| ID-02 | **Compte désactivé : connexion refusée et session existante invalidée** |
+| ID-03 | Mot de passe jamais stocké en clair (empreinte scrypt), jamais renvoyé par l'API |
+| ID-04 | Réinitialisation par l'admin, changement par l'utilisateur (ancien mot de passe exigé) |
+| ID-05 | **Un administrateur ne peut ni se rétrograder ni se désactiver** |
+| ID-06 | Recherche d'un collaborateur par nom insensible à la casse |
+| POR-01 | La demande est rattachée au compte de l'employé, qui en est l'auteur |
+| POR-02 | **Isolation : chaque employé ne liste et n'ouvre que ses demandes** |
+| POR-03 | Un ticket supprimé disparaît du portail |
+| POR-04 | Réouverture uniquement après résolution, motif obligatoire publié dans la conversation |
+| POR-05 | Aucune action possible sur la demande d'un collègue |
+
+### Sécurité technique
+
+| ID | Scénario |
+|---|---|
+| SEC-01 | scrypt : bon mot de passe accepté, variantes refusées, sel unique |
+| SEC-02 | Jeton de session émis puis reconnu |
+| SEC-03 | **Jeton falsifié (identifiant usurpé), autre secret ou jeton malformé ⇒ rejeté** |
+| SEC-04 | Jeton expiré ⇒ rejeté |
+| SEC-05 | Cookie `HttpOnly`, `SameSite=Lax`, `Secure` en HTTPS, effacement par `Max-Age=0` |
+| SEC-06 | Limitation des tentatives : blocage après N échecs, levée après la fenêtre ou un succès |
+| USR-01 | Annuaire JSON : persistance au redémarrage, écriture atomique, e-mail insensible à la casse |
+| USR-02 | Annuaire : objets renvoyés par copie |
+
 ## 7. API tRPC
 
 | ID | Scénario |
 |---|---|
-| API-01 | Valeurs par défaut + acteur du contexte |
+| API-01 | Valeurs par défaut + **acteur = utilisateur authentifié** |
 | API-02 | Validation de forme zod ⇒ `BAD_REQUEST` |
 | API-03 | Erreur métier ⇒ message français + `domainCode` |
 | API-04 | Ticket inconnu ⇒ 404 ; fermé / supprimé ⇒ 412 |
 | API-05 | Parcours multi-agents complet visible dans détail, audit, dashboard, intégrité |
 | API-06 | `byId` inconnu ⇒ 404 |
-| API-07 | Équipe exposée |
+| API-07 | Équipe DSI exposée (agents actifs, sans les employés) |
 | API-08 | `listActive` exclut les supprimés |
 | API-09 | Entrées surdimensionnées rejetées à la frontière |
+| API-10 | Demande saisie par la DSI pour un collaborateur ⇒ visible dans **son** portail |
+| AUTH-01 | Connexion : session ouverte, aucune empreinte de mot de passe renvoyée |
+| AUTH-02 | Identifiants incorrects ⇒ 401, message identique que le compte existe ou non |
+| AUTH-03 | **Force brute : après N échecs, même le bon mot de passe est refusé (429)** |
+| AUTH-04 | Compte désactivé ⇒ connexion refusée |
+| AUTH-05 | Déconnexion : session fermée ; `auth.me` |
+| AUTH-06 | **Sans session : toutes les données ⇒ 401** |
+| AUTH-07 | **Employé : tout le back-office ⇒ 403** (liste, fiche, modification, note interne, dashboard, audit, annuaire, admin) |
+| AUTH-08 | Agent DSI : administration des comptes ⇒ 403 |
+| AUTH-09 | Admin : création de compte, e-mail unique (409), mot de passe faible refusé, auto-rétrogradation interdite |
+| POR-API-01 | **Portail : seulement ses demandes, sans notes internes ni étiquettes ; demande d'un collègue ⇒ 404** |
+| POR-API-02 | Cycle déclaration → résolution DSI → confirmation ; confirmation prématurée ⇒ 403 ; ticket fermé ⇒ 412 |
 
 ## 8. Architecture
 
@@ -161,7 +212,7 @@ Chaque scénario porte un identifiant repris dans le nom du test (ex. `DOM-U04`)
 
 | ID | Parcours utilisateur |
 |---|---|
-| E2E-01 | Navigation entre les 4 écrans, redirection vers le tableau de bord |
+| E2E-01 | Navigation entre les écrans du back-office, redirection vers le tableau de bord |
 | E2E-02 | Création complète via la modale (raccourci **N**), visible dans la liste avec référence |
 | E2E-03 | Création impossible sans titre ; Échap ferme la modale |
 | E2E-04 | Modifier statut, priorité, « M'assigner » ; version incrémentée |
@@ -175,17 +226,28 @@ Chaque scénario porte un identifiant repris dans le nom du test (ex. `DOM-U04`)
 | E2E-12 | **Voyage dans le temps : état passé reconstitué, différences surlignées** |
 | E2E-13 | Palette Ctrl+K : recherche et ouverture d'un ticket |
 | E2E-14 | Recherche sans accents et vues « Mes tickets » / « Non assignés » |
-| E2E-15 | Changement d'agent : actions attribuées au bon acteur dans l'audit |
+| E2E-15 | Traçabilité : les actions sont attribuées à l'agent connecté |
 | E2E-16 | Badge « Journal intègre », sceau SHA-256, téléchargement CSV |
 | E2E-17 | Indicateur du tableau de bord mis à jour après création |
 | E2E-18 | Thème sombre mémorisé après rechargement |
 | E2E-19 | Mobile (390 px) : aucun débordement horizontal sur les 4 écrans |
 | E2E-20 | Accessibilité clavier : ouverture d'un ticket avec Entrée |
+| E2E-21 | Connexion : erreur sur mauvais mot de passe, puis redirection selon le profil (employé ⇒ portail) |
+| E2E-22 | Page protégée sans session ⇒ connexion, puis retour à la page demandée |
+| E2E-23 | **Employé : les 5 écrans DSI le renvoient au portail ; l'API répond 403** |
+| E2E-24 | **Déconnexion : session détruite côté serveur (401), écrans protégés inaccessibles** |
+| E2E-25 | **Parcours complet à deux navigateurs : déclaration → prise en charge, note interne, réponse, résolution → l'employée voit la réponse (jamais la note) et confirme → ticket fermé, tracé à son nom** |
+| E2E-26 | « Le problème persiste » : réouverture avec motif visible dans la conversation |
+| E2E-27 | **Isolation : un employé ne peut pas ouvrir la demande d'un collègue** |
+| E2E-28 | L'administrateur crée un compte, qui peut aussitôt se connecter |
+| E2E-29 | Compte désactivé ⇒ connexion refusée ; un agent n'accède pas à l'administration |
+| E2E-30 | Portail et connexion sur mobile (390 px) : aucun débordement horizontal |
 
-## Recette manuelle complémentaire (avant une démo client)
+## Recette manuelle complémentaire
 
 1. `npm run seed -- --force` puis `npm run dev`.
 2. Vérifier l'affichage sur Chrome, Firefox, Edge et Safari (iPad).
 3. Modifier une ligne de `data/events.jsonl` à la main, redémarrer : le journal d'audit doit afficher « Altération détectée ! ».
-4. Ouvrir deux onglets avec deux agents différents : les modifications de l'un apparaissent chez l'autre en moins de 5 s.
-5. Ouvrir l'export CSV dans Excel : accents et colonnes corrects.
+4. Ouvrir deux navigateurs (un employé, un agent) : une demande déclarée au portail apparaît dans le back-office en moins de 5 s, et la réponse de l'agent dans le portail.
+5. Copier le cookie `hdx_session` d'un employé et en modifier un caractère : l'API doit répondre 401.
+6. Ouvrir l'export CSV dans Excel : accents et colonnes corrects.

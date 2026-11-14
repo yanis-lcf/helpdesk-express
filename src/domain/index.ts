@@ -5,3 +5,5 @@ export * from './ticket/decide';
 export * from './ticket/sla';
 export * from './ticket/projections';
 export * from './ticket/dashboard';
+export * from './identity/types';
+export * from './access/policy';

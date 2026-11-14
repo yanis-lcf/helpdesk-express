@@ -59,6 +59,8 @@ export type TicketCreated = DomainEvent<
     readonly priority: Priority;
     readonly category: Category;
     readonly requester: string;
+    /** Compte du demandeur (portail employé) ; absent pour une demande saisie au nom d'un tiers. */
+    readonly requesterId?: string | null;
     readonly tags: readonly string[];
   }
 >;
@@ -98,6 +100,7 @@ export type Ticket = {
   readonly category: Category;
   readonly status: Status;
   readonly requester: string;
+  readonly requesterId: string | null;
   readonly assignee: Actor | null;
   readonly tags: readonly string[];
   readonly comments: readonly Comment[];
@@ -125,6 +128,7 @@ export type CreateTicket = CommandBase<'CreateTicket'> & {
   readonly priority: Priority;
   readonly category: Category;
   readonly requester: string;
+  readonly requesterId: string | null;
   readonly tags: readonly string[];
 };
 export type UpdateTicket = CommandBase<'UpdateTicket'> & { readonly changes: TicketChanges };
@@ -146,7 +150,8 @@ export type DomainError =
   | { readonly code: 'TICKET_NOT_FOUND'; readonly ticketId: TicketId }
   | { readonly code: 'TICKET_CLOSED'; readonly ticketId: TicketId }
   | { readonly code: 'TICKET_DELETED'; readonly ticketId: TicketId }
-  | { readonly code: 'NO_CHANGES'; readonly ticketId: TicketId };
+  | { readonly code: 'NO_CHANGES'; readonly ticketId: TicketId }
+  | { readonly code: 'FORBIDDEN'; readonly message: string };
 
 export const DomainErrors = {
   validation: (message: string): DomainError => ({ code: 'VALIDATION', message }),
@@ -155,4 +160,5 @@ export const DomainErrors = {
   closed: (ticketId: TicketId): DomainError => ({ code: 'TICKET_CLOSED', ticketId }),
   deleted: (ticketId: TicketId): DomainError => ({ code: 'TICKET_DELETED', ticketId }),
   noChanges: (ticketId: TicketId): DomainError => ({ code: 'NO_CHANGES', ticketId }),
+  forbidden: (message: string): DomainError => ({ code: 'FORBIDDEN', message }),
 } as const;

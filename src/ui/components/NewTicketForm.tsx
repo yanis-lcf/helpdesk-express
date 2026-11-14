@@ -17,11 +17,14 @@ export type NewTicketInput = {
 /** Formulaire de création (composant pur : testable sans serveur). */
 export const NewTicketForm = ({
   team,
+  requesters = [],
   submitting = false,
   onSubmit,
   onCancel,
 }: {
   team: readonly { name: string }[];
+  /** Collaborateurs connus : la demande apparaîtra dans leur portail. */
+  requesters?: readonly string[];
   submitting?: boolean;
   onSubmit: (input: NewTicketInput) => void;
   onCancel: () => void;
@@ -110,7 +113,12 @@ export const NewTicketForm = ({
           <span>
             Demandeur <span className="help">— vous par défaut</span>
           </span>
-          <input className="input" value={requester} onChange={(e) => setRequester(e.target.value)} placeholder="Nom, service…" />
+          <input className="input" list="requesters" value={requester} onChange={(e) => setRequester(e.target.value)} placeholder="Nom, service…" />
+          <datalist id="requesters">
+            {requesters.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
         </label>
         <div className="field">
           <span>Étiquettes</span>

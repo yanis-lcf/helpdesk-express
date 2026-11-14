@@ -1,4 +1,4 @@
-import type { Result, TicketEvent, TicketId, Timestamp } from '../domain';
+import type { Result, TicketEvent, TicketId, Timestamp, User, UserId } from '../domain';
 
 /** Événement tel qu'enregistré dans l'Event Store (enveloppe technique + fait métier). */
 export type StoredEvent = {
@@ -49,3 +49,22 @@ export interface EventStoreRepository {
 /** L'horloge et la génération d'identifiants sont des effets : injectés par la couche externe. */
 export type Clock = () => Timestamp;
 export type IdGenerator = () => string;
+
+// ---------- Identité ----------
+
+/** Compte stocké : l'empreinte du mot de passe ne quitte jamais l'infrastructure et la couche application. */
+export type UserRecord = User & { readonly passwordHash: string };
+
+export interface UserRepository {
+  list(): Promise<readonly UserRecord[]>;
+  findById(id: UserId): Promise<UserRecord | null>;
+  findByEmail(email: string): Promise<UserRecord | null>;
+  /** Création ou remplacement (clé : id). */
+  save(user: UserRecord): Promise<void>;
+}
+
+/** Hachage lent et salé (scrypt en production) : injecté pour rester testable. */
+export interface PasswordHasher {
+  hash(password: string): Promise<string>;
+  verify(password: string, hash: string): Promise<boolean>;
+}

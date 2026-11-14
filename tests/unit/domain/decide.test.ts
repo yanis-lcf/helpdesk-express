@@ -16,6 +16,7 @@ const create = (overrides: Partial<Extract<TicketCommand, { type: 'CreateTicket'
   priority: 'LOW',
   category: 'HARDWARE',
   requester: '',
+  requesterId: null,
   tags: [],
   ...overrides,
 });
@@ -41,7 +42,7 @@ describe('CreateTicket', () => {
           ticketId: 't1',
           occurredAt: T(5),
           actor: AGENT,
-          payload: { title: 'Imprimante HS', description: '2e', priority: 'LOW', category: 'HARDWARE', requester: AGENT, tags: ['wifi', 'salle-b'] },
+          payload: { title: 'Imprimante HS', description: '2e', priority: 'LOW', category: 'HARDWARE', requester: AGENT, requesterId: null, tags: ['wifi', 'salle-b'] },
         },
       ],
     });
